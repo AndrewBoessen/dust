@@ -9,6 +9,8 @@ defmodule Bridge do
 
   use GenServer
 
+  @behaviour Bridge.Behaviour
+
   require Logger
 
   @sidecar_path "native/tsnet_sidecar/tsnet_sidecar"
@@ -32,6 +34,7 @@ defmodule Bridge do
 
   Returns `{:ok, <<key::binary-32>>}` on success.
   """
+  @impl true
   @spec request_key(String.t()) :: {:ok, binary()} | {:error, term()}
   def request_key(peer_address) do
     case send_command("KEY_REQUEST #{peer_address}", 30_000) do
@@ -54,6 +57,7 @@ defmodule Bridge do
 
   The key is sent as raw bytes in the command payload.
   """
+  @impl true
   @spec serve_key(binary()) :: :ok | {:error, term()}
   def serve_key(key) when byte_size(key) == 32 do
     case send_command("KEY_SERVE " <> key) do
