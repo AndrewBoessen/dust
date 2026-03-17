@@ -24,7 +24,6 @@ defmodule Dust.Core.KeyStore do
 
   @key_size 32
   @salt_size 16
-  @pbkdf2_iterations 100_000
   @aes_mode :aes_256_gcm
 
   # ── Public API ──────────────────────────────────────────────────────────
@@ -37,7 +36,7 @@ defmodule Dust.Core.KeyStore do
   @doc """
   Unlock the key store with the user's password.
 
-  Derives a device-bound key from `password <> machine-id` via PBKDF2,
+  Derives a device-bound key from `password <> machine-id` via Argon2,
   then either decrypts an existing master key from disk or generates a
   new one on first boot. The password is discarded after derivation.
 
@@ -186,7 +185,9 @@ defmodule Dust.Core.KeyStore do
     machine_id = read_machine_id()
     secret = password <> machine_id
 
-    :crypto.pbkdf2_hmac(:sha256, secret, salt, @pbkdf2_iterations, @key_size)
+    secret
+    |> Argon2.Base.hash_password(salt, format: :raw_hash, hashlen: @key_size, argon2_type: 2)
+    |> Base.decode16!(case: :lower)
   end
 
   defp read_machine_id do
