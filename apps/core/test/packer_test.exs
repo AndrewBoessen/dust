@@ -19,6 +19,7 @@ defmodule Dust.Core.PackerTest do
     on_exit(fn -> File.rm(key_path) end)
     :ok
   end
+
   # ── Helpers ─────────────────────────────────────────────────────────────
 
   defp write_tmp_file(name, content) do
@@ -72,13 +73,14 @@ defmodule Dust.Core.PackerTest do
       assert chunk_meta.hash =~ ~r/^[0-9A-F]{64}$/
     end
 
-    test "chunk hash matches SHA-256 of the ciphertext" do
-      path = write_tmp_file("hash_verify", "verify hash integrity")
-
+    test "chunk hash matches HMAC of plaintext with content-hash label" do
+      plain = "verify hash integrity"
+      path = write_tmp_file("hash_verify", plain)
       {:ok, _meta, stream} = Packer.process_file_stream(path)
-      [{chunk_meta, ciphertext}] = Enum.to_list(stream)
 
-      expected_hash = :crypto.hash(:sha256, ciphertext) |> Base.encode16()
+      [{chunk_meta, _ciphertext}] = Enum.to_list(stream)
+
+      expected_hash = :crypto.mac(:hmac, :sha256, plain, "content-hash") |> Base.encode16()
       assert chunk_meta.hash == expected_hash
     end
 

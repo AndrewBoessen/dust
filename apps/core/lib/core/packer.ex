@@ -55,23 +55,22 @@ defmodule Dust.Core.Packer do
 
   @spec process_chunk(binary(), Crypto.file_key()) :: {ChunkMeta.t(), binary()}
   defp process_chunk(plain_binary, file_key) do
-    chunk_key = :crypto.hash(:sha256, plain_binary)
+    chunk_key = :crypto.mac(:hmac, :sha256, plain_binary, "chunk-key")
+
+    content_hash =
+      :crypto.mac(:hmac, :sha256, plain_binary, "content-hash")
+      |> Base.encode16()
+
     wrapped_chunk_key = Crypto.encrypt_with_key(chunk_key, file_key)
 
     encrypted_payload = Crypto.encrypt_with_key(plain_binary, chunk_key)
 
-    meta = generate_chunk_metadata(encrypted_payload, wrapped_chunk_key)
-    {meta, encrypted_payload}
-  end
-
-  @spec generate_chunk_metadata(binary(), Crypto.encrypted_key()) :: ChunkMeta.t()
-  defp generate_chunk_metadata(encrypted_binary, wrapped_chunk_key) do
-    hash = :crypto.hash(:sha256, encrypted_binary) |> Base.encode16()
-
-    %ChunkMeta{
-      hash: hash,
-      size: byte_size(encrypted_binary),
+    meta = %ChunkMeta{
+      hash: content_hash,
+      size: byte_size(encrypted_payload),
       encrypted_chunk_key: wrapped_chunk_key
     }
+
+    {meta, encrypted_payload}
   end
 end
