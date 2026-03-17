@@ -1,11 +1,24 @@
 defmodule Dust.Core.PackerTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias Dust.Core.Packer
   alias Dust.Core.Crypto.{FileMeta, ChunkMeta}
 
   @tmp_dir System.tmp_dir!()
 
+  setup do
+    if Process.whereis(Dust.Core.Supervisor) do
+      Supervisor.terminate_child(Dust.Core.Supervisor, Dust.Core.KeyStore)
+      Supervisor.delete_child(Dust.Core.Supervisor, Dust.Core.KeyStore)
+    end
+
+    _ = stop_supervised(Dust.Core.KeyStore)
+    key_path = Path.join(@tmp_dir, "dust_packer_test_#{System.unique_integer([:positive])}.key")
+    start_supervised!({Dust.Core.KeyStore, [key_path: key_path]})
+    :ok = Dust.Core.KeyStore.unlock("test_password")
+    on_exit(fn -> File.rm(key_path) end)
+    :ok
+  end
   # ── Helpers ─────────────────────────────────────────────────────────────
 
   defp write_tmp_file(name, content) do

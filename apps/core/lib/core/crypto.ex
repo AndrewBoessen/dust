@@ -89,7 +89,7 @@ defmodule Dust.Core.Crypto do
   defp get_master_key do
     case Dust.Core.KeyStore.get_key() do
       {:ok, key} -> key
-      {:error, :not_initialized} -> raise "Master key not yet initialized"
+      {:error, :locked} -> raise "KeyStore is locked – call Dust.Core.KeyStore.unlock/1 first"
     end
   end
 end

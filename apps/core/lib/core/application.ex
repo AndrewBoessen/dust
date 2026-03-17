@@ -6,7 +6,7 @@ defmodule Dust.Core.Application do
   @impl true
   def start(_type, _args) do
     children = [
-      Dust.Core.KeyStore
+      {Dust.Core.KeyStore, []}
     ]
 
     Supervisor.start_link(children, strategy: :one_for_one, name: Dust.Core.Supervisor)

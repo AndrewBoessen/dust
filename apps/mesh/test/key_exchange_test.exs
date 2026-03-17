@@ -7,6 +7,7 @@ defmodule Mesh.KeyExchangeTest do
   alias Mesh.KeyExchange
 
   @tmp_dir System.tmp_dir!()
+  @test_password "test_password_123"
 
   setup :verify_on_exit!
 
@@ -24,6 +25,7 @@ defmodule Mesh.KeyExchangeTest do
 
     _ = stop_supervised(KeyStore)
     start_supervised!({KeyStore, [key_path: path]})
+    :ok = KeyStore.unlock(@test_password)
   end
 
   # ── bootstrap_key/0 ────────────────────────────────────────────────────

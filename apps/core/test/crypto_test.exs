@@ -1,5 +1,5 @@
 defmodule Dust.Core.CryptoTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias Dust.Core.Crypto
   alias Dust.Core.Crypto.{FileMeta, ChunkMeta}
@@ -116,6 +116,20 @@ defmodule Dust.Core.CryptoTest do
   # ── Master-key helpers ──────────────────────────────────────────────────
 
   describe "encrypt_with_master/1 and decrypt_file_key/1" do
+    setup do
+      # Ensure a fresh, unlocked KeyStore for master-key tests
+      if Process.whereis(Dust.Core.Supervisor) do
+        Supervisor.terminate_child(Dust.Core.Supervisor, Dust.Core.KeyStore)
+        Supervisor.delete_child(Dust.Core.Supervisor, Dust.Core.KeyStore)
+      end
+
+      path = Path.join(System.tmp_dir!(), "dust_crypto_test_#{System.unique_integer([:positive])}.key")
+      start_supervised!({Dust.Core.KeyStore, [key_path: path]})
+      :ok = Dust.Core.KeyStore.unlock("test_password")
+      on_exit(fn -> File.rm(path) end)
+      :ok
+    end
+
     test "round-trips a file key through master encryption" do
       file_key = :crypto.strong_rand_bytes(32)
 

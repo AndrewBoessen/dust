@@ -1,17 +1,21 @@
 defmodule Dust.Core.KeyStore do
   @moduledoc """
-  Manages the network-wide master key lifecycle.
+  Manages the network-wide master key lifecycle using a vault-unlock pattern.
 
-  On startup the GenServer checks for a persisted key file on disk:
+  The GenServer boots into a `:locked` state. No disk I/O or key material is
+  touched until the user provides their password via `unlock/1`.
 
-    * **Key file exists** – reads, decrypts-at-rest, and loads it into state.
-    * **Key file missing, no peers** – generates a fresh 32-byte key, persists it.
-    * **Key file missing, peers available** – enters `:awaiting_key` and waits
-      for the mesh layer to call `set_key/1` with the key obtained from a peer.
+  ## Unlock flow
 
-  The key is encrypted at rest using a device-bound key derived from the
-  machine-id via PBKDF2 so that simply copying the file to another machine
-  does not expose the master key.
+    * **Key file exists** – derives a device key from `password <> machine-id`
+      via PBKDF2, decrypts the master key, and transitions to `:ready`.
+    * **Key file missing** – generates a fresh 32-byte master key, encrypts it
+      at rest with the derived device key, persists it, and transitions to `:ready`.
+    * **Wrong password** – decryption fails, the store stays `:locked`.
+
+  The `lock/0` function wipes the key from state and returns to `:locked`.
+  The password is never stored — it is only held in memory during the
+  PBKDF2 derivation call inside `unlock/1`.
   """
 
   use GenServer
@@ -31,12 +35,37 @@ defmodule Dust.Core.KeyStore do
   end
 
   @doc """
+  Unlock the key store with the user's password.
+
+  Derives a device-bound key from `password <> machine-id` via PBKDF2,
+  then either decrypts an existing master key from disk or generates a
+  new one on first boot. The password is discarded after derivation.
+
+  Returns `:ok` on success, `{:error, :decrypt_failed}` for a wrong
+  password, or `{:error, :already_unlocked}` if already in `:ready` state.
+  """
+  @spec unlock(String.t()) :: :ok | {:error, :decrypt_failed | :already_unlocked}
+  def unlock(password) when is_binary(password) do
+    GenServer.call(__MODULE__, {:unlock, password})
+  end
+
+  @doc """
+  Lock the key store, wiping the master key from memory.
+
+  Returns `:ok`. The store transitions back to `:locked`.
+  """
+  @spec lock() :: :ok
+  def lock do
+    GenServer.call(__MODULE__, :lock)
+  end
+
+  @doc """
   Retrieve the master key.
 
-  Returns `{:ok, <<key::256>>}` when the key is loaded,
-  or `{:error, :not_initialized}` if still awaiting a peer sync.
+  Returns `{:ok, <<key::256>>}` when unlocked,
+  or `{:error, :locked}` if the store has not been unlocked yet.
   """
-  @spec get_key() :: {:ok, binary()} | {:error, :not_initialized}
+  @spec get_key() :: {:ok, binary()} | {:error, :locked}
   def get_key do
     GenServer.call(__MODULE__, :get_key)
   end
@@ -44,8 +73,9 @@ defmodule Dust.Core.KeyStore do
   @doc """
   Accept a master key received from a peer node.
 
-  Persists it to disk and transitions the store to `:ready`.
-  Returns `:ok` or `{:error, reason}`.
+  Persists it to disk (encrypted with the current device key) and
+  keeps the store in `:ready` state.
+  Returns `:ok`, `{:error, :locked}`, or `{:error, reason}`.
   """
   @spec set_key(binary()) :: :ok | {:error, atom()}
   def set_key(key) when byte_size(key) == @key_size do
@@ -65,38 +95,63 @@ defmodule Dust.Core.KeyStore do
   @impl true
   def init(opts) do
     key_path = Keyword.get(opts, :key_path, default_key_path())
-
-    case read_key_from_disk(key_path) do
-      {:ok, key} ->
-        Logger.info("KeyStore: loaded master key from #{key_path}")
-        {:ok, %{key: key, status: :ready, key_path: key_path}}
-
-      {:error, :enoent} ->
-        # No key file – generate a new one (first node scenario).
-        # When mesh peer discovery is wired up, this branch can
-        # instead enter :awaiting_key and let the mesh provide it.
-        key = :crypto.strong_rand_bytes(@key_size)
-        :ok = write_key_to_disk(key, key_path)
-        Logger.info("KeyStore: generated new master key at #{key_path}")
-        {:ok, %{key: key, status: :ready, key_path: key_path}}
-
-      {:error, reason} ->
-        Logger.error("KeyStore: failed to read key file – #{inspect(reason)}")
-        {:stop, {:key_file_error, reason}}
-    end
+    {:ok, %{key: nil, password: nil, status: :locked, key_path: key_path}}
   end
 
   @impl true
+  def handle_call({:unlock, _password}, _from, %{status: :ready} = state) do
+    {:reply, {:error, :already_unlocked}, state}
+  end
+
+  def handle_call({:unlock, password}, _from, %{status: :locked, key_path: key_path} = state) do
+    case File.read(key_path) do
+      {:ok, <<salt::binary-size(@salt_size), iv::binary-16, tag::binary-16, ciphertext::binary>>} ->
+        device_key = derive_device_key(salt, password)
+
+        case :crypto.crypto_one_time_aead(@aes_mode, device_key, iv, ciphertext, "", tag, false) do
+          :error ->
+            {:reply, {:error, :decrypt_failed}, state}
+
+          plaintext ->
+            Logger.info("KeyStore: unlocked master key from #{key_path}")
+            {:reply, :ok, %{state | key: plaintext, password: password, status: :ready}}
+        end
+
+      {:ok, _} ->
+        {:reply, {:error, :decrypt_failed}, state}
+
+      {:error, :enoent} ->
+        # First boot — generate a new master key
+        key = :crypto.strong_rand_bytes(@key_size)
+        :ok = write_key_to_disk(key, key_path, password)
+        Logger.info("KeyStore: generated new master key at #{key_path}")
+        {:reply, :ok, %{state | key: key, password: password, status: :ready}}
+
+      {:error, reason} ->
+        Logger.error("KeyStore: failed to read key file – #{inspect(reason)}")
+        {:reply, {:error, reason}, state}
+    end
+  end
+
+  def handle_call(:lock, _from, state) do
+    Logger.info("KeyStore: locked")
+    {:reply, :ok, %{state | key: nil, password: nil, status: :locked}}
+  end
+
   def handle_call(:get_key, _from, %{status: :ready, key: key} = state) do
     {:reply, {:ok, key}, state}
   end
 
-  def handle_call(:get_key, _from, %{status: :awaiting_key} = state) do
-    {:reply, {:error, :not_initialized}, state}
+  def handle_call(:get_key, _from, %{status: :locked} = state) do
+    {:reply, {:error, :locked}, state}
   end
 
-  def handle_call({:set_key, key}, _from, %{key_path: key_path} = state) do
-    case write_key_to_disk(key, key_path) do
+  def handle_call({:set_key, _key}, _from, %{status: :locked} = state) do
+    {:reply, {:error, :locked}, state}
+  end
+
+  def handle_call({:set_key, key}, _from, %{key_path: key_path, password: password} = state) do
+    case write_key_to_disk(key, key_path, password) do
       :ok ->
         Logger.info("KeyStore: master key received from peer and persisted")
         {:reply, :ok, %{state | key: key, status: :ready}}
@@ -112,29 +167,11 @@ defmodule Dust.Core.KeyStore do
 
   # ── Disk persistence (encrypted at rest) ────────────────────────────────
 
-  defp read_key_from_disk(path) do
-    case File.read(path) do
-      {:ok, <<salt::binary-size(@salt_size), iv::binary-16, tag::binary-16, ciphertext::binary>>} ->
-        device_key = derive_device_key(salt)
-
-        case :crypto.crypto_one_time_aead(@aes_mode, device_key, iv, ciphertext, "", tag, false) do
-          :error -> {:error, :decrypt_failed}
-          plaintext -> {:ok, plaintext}
-        end
-
-      {:ok, _} ->
-        {:error, :corrupt_key_file}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp write_key_to_disk(key, path) do
+  defp write_key_to_disk(key, path, password) do
     File.mkdir_p!(Path.dirname(path))
 
     salt = :crypto.strong_rand_bytes(@salt_size)
-    device_key = derive_device_key(salt)
+    device_key = derive_device_key(salt, password)
     iv = :crypto.strong_rand_bytes(16)
 
     {ciphertext, tag} =
@@ -145,10 +182,11 @@ defmodule Dust.Core.KeyStore do
 
   # ── Device key derivation ───────────────────────────────────────────────
 
-  defp derive_device_key(salt) do
+  defp derive_device_key(salt, password) do
     machine_id = read_machine_id()
+    secret = password <> machine_id
 
-    :crypto.pbkdf2_hmac(:sha256, machine_id, salt, @pbkdf2_iterations, @key_size)
+    :crypto.pbkdf2_hmac(:sha256, secret, salt, @pbkdf2_iterations, @key_size)
   end
 
   defp read_machine_id do
