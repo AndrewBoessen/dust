@@ -63,8 +63,8 @@ defmodule Mesh.KeyExchange do
         Logger.info("KeyExchange: advertising master key to peers")
         bridge().serve_key(key)
 
-      {:error, :not_initialized} ->
-        {:error, :no_key_to_serve}
+      {:error, :locked} ->
+        {:error, :key_store_locked}
     end
   end
 
@@ -87,9 +87,14 @@ defmodule Mesh.KeyExchange do
         end)
 
       case result do
-        :ok -> :ok
+        :ok ->
+          :ok
+
         {:error, _reason} ->
-          Logger.warning("KeyExchange: could not reach any seed peer, using locally generated key")
+          Logger.warning(
+            "KeyExchange: could not reach any seed peer, using locally generated key"
+          )
+
           serve_local_key()
       end
     end
