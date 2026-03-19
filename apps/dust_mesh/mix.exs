@@ -25,6 +25,7 @@ defmodule Dust.Mesh.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:delta_crdt, "~> 0.6.5"},
       # {:dep_from_hexpm, "~> 0.3.0"},
       # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"},
       {:dust_core, in_umbrella: true},

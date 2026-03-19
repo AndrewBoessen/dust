@@ -27,10 +27,20 @@ defmodule Dust.Mesh.NodeRegistry do
   @type node_entry :: %{status: node_status(), seen_at: DateTime.t()}
   @type registry :: %{node() => node_entry()}
 
+  # Subscribers register under this key to receive change notifications
+  @pubsub_topic :node_registry_changes
+
   # ── Public API ─────────────────────────────────────────────────────────────
 
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  end
+
+  @doc "Subscribe the calling process to registry change notifications."
+  @spec subscribe() :: :ok
+  def subscribe() do
+    Registry.register(Dust.Mesh.Registry, @pubsub_topic, [])
+    :ok
   end
 
   @doc "Returns the full registry map of all known nodes and their status."
@@ -82,7 +92,7 @@ defmodule Dust.Mesh.NodeRegistry do
     new_registry = put_entry(state.registry, node, :online)
     request_sync(node)
 
-    {:noreply, %{state | registry: new_registry}}
+    {:noreply, notify(%{state | registry: new_registry})}
   end
 
   def handle_info({:nodedown, node}, state) do
@@ -90,14 +100,14 @@ defmodule Dust.Mesh.NodeRegistry do
 
     new_registry = put_entry(state.registry, node, :offline)
 
-    {:noreply, %{state | registry: new_registry}}
+    {:noreply, notify(%{state | registry: new_registry})}
   end
 
   # ── Peer messages ──────────────────────────────────────────────────────────
 
   def handle_info({:presence, node}, state) do
     new_registry = put_entry(state.registry, node, :online)
-    {:noreply, %{state | registry: new_registry}}
+    {:noreply, notify(%{state | registry: new_registry})}
   end
 
   def handle_info({:sync_request, from_node}, state) do
@@ -107,7 +117,7 @@ defmodule Dust.Mesh.NodeRegistry do
 
   def handle_info({:sync_response, _from_node, their_registry}, state) do
     new_registry = merge_registries(state.registry, their_registry)
-    {:noreply, %{state | registry: new_registry}}
+    {:noreply, notify(%{state | registry: new_registry})}
   end
 
   # ── Calls ──────────────────────────────────────────────────────────────────
@@ -137,6 +147,21 @@ defmodule Dust.Mesh.NodeRegistry do
   end
 
   # ── Private ────────────────────────────────────────────────────────────────
+
+  defp notify(state) do
+    online =
+      state.registry
+      |> Enum.filter(fn {_, e} -> e.status == :online end)
+      |> Enum.map(fn {node, _} -> node end)
+
+    Registry.dispatch(Dust.Mesh.Registry, @pubsub_topic, fn subscribers ->
+      Enum.each(subscribers, fn {pid, _} ->
+        send(pid, {:node_registry_changed, online})
+      end)
+    end)
+
+    state
+  end
 
   defp put_entry(registry, node, status) do
     Map.put(registry, node, %{status: status, seen_at: DateTime.utc_now()})
