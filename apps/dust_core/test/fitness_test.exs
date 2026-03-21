@@ -12,20 +12,7 @@ defmodule Dust.Core.FitnessTest do
     Path.join(@tmp_dir, "dust_test_fitness_#{System.unique_integer([:positive])}.bin")
   end
 
-  defp stop_app_model_store do
-    # The :core application starts ModelStore under Dust.Core.Supervisor.
-    # We must fully remove it from that supervisor before starting our own.
-    if Process.whereis(Dust.Core.Supervisor) do
-      Supervisor.terminate_child(Dust.Core.Supervisor, ModelStore)
-      Supervisor.delete_child(Dust.Core.Supervisor, ModelStore)
-    end
-
-    # Also clean up any ExUnit-supervised instance from a previous test
-    _ = stop_supervised(ModelStore)
-  end
-
-  defp start_fresh_model_store(path) do
-    stop_app_model_store()
+  defp start_model_store!(path) do
     start_supervised!({ModelStore, [persist_path: path]})
   end
 
@@ -198,7 +185,7 @@ defmodule Dust.Core.FitnessTest do
       path = unique_persist_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_model_store(path)
+      start_model_store!(path)
 
       assert ModelStore.get("unknown-node") == NodeEMA.new()
     end
@@ -207,7 +194,7 @@ defmodule Dust.Core.FitnessTest do
       path = unique_persist_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_model_store(path)
+      start_model_store!(path)
 
       obs = %Observation{success: true, latency_ms: 25.0, bandwidth: 60.0}
       updated = ModelStore.update("node-a", obs)
@@ -221,7 +208,7 @@ defmodule Dust.Core.FitnessTest do
       path = unique_persist_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_model_store(path)
+      start_model_store!(path)
 
       obs = %Observation{success: true, latency_ms: 25.0, bandwidth: 60.0}
       updated = ModelStore.update("node-a", obs)
@@ -235,7 +222,7 @@ defmodule Dust.Core.FitnessTest do
       path = unique_persist_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_model_store(path)
+      start_model_store!(path)
 
       obs = %Observation{success: true, latency_ms: 10.0, bandwidth: 100.0}
 
@@ -251,7 +238,7 @@ defmodule Dust.Core.FitnessTest do
       path = unique_persist_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_model_store(path)
+      start_model_store!(path)
 
       ModelStore.update("fast-node", %Observation{
         success: true,
@@ -270,7 +257,7 @@ defmodule Dust.Core.FitnessTest do
       path = unique_persist_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_model_store(path)
+      start_model_store!(path)
 
       obs = %Observation{success: true, latency_ms: 25.0, bandwidth: 60.0}
       ModelStore.update("node-a", obs)
@@ -282,7 +269,7 @@ defmodule Dust.Core.FitnessTest do
       path = unique_persist_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_model_store(path)
+      start_model_store!(path)
 
       obs = %Observation{success: true, latency_ms: 25.0, bandwidth: 60.0}
       updated = ModelStore.update("node-a", obs)
@@ -298,7 +285,7 @@ defmodule Dust.Core.FitnessTest do
       path = unique_persist_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_model_store(path)
+      start_model_store!(path)
 
       assert ModelStore.get("any-node") == NodeEMA.new()
     end
@@ -311,7 +298,7 @@ defmodule Dust.Core.FitnessTest do
       path = unique_persist_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_model_store(path)
+      start_model_store!(path)
 
       assert Fitness.score("never-seen") == NodeEMA.new() |> NodeEMA.score()
     end
@@ -320,7 +307,7 @@ defmodule Dust.Core.FitnessTest do
       path = unique_persist_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_model_store(path)
+      start_model_store!(path)
 
       initial_score = Fitness.score("node-a")
       Fitness.record("node-a", %Observation{success: true, latency_ms: 10.0, bandwidth: 100.0})
@@ -332,7 +319,7 @@ defmodule Dust.Core.FitnessTest do
       path = unique_persist_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_model_store(path)
+      start_model_store!(path)
 
       good_obs = %Observation{success: true, latency_ms: 10.0, bandwidth: 100.0}
       bad_obs = %Observation{success: false, latency_ms: nil, bandwidth: nil}
@@ -351,7 +338,7 @@ defmodule Dust.Core.FitnessTest do
       path = unique_persist_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_model_store(path)
+      start_model_store!(path)
 
       obs = %Observation{success: true, latency_ms: 30.0, bandwidth: 50.0}
       updated = Fitness.record("node-a", obs)
@@ -364,7 +351,7 @@ defmodule Dust.Core.FitnessTest do
       path = unique_persist_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_model_store(path)
+      start_model_store!(path)
 
       obs = %Observation{success: true, latency_ms: 10.0, bandwidth: 100.0}
       Fitness.record("node-a", obs)

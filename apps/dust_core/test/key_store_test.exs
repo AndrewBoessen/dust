@@ -12,20 +12,7 @@ defmodule Dust.Core.KeyStoreTest do
     Path.join(@tmp_dir, "dust_test_master_#{System.unique_integer([:positive])}.key")
   end
 
-  defp stop_app_key_store do
-    # The :core application starts KeyStore under Dust.Core.Supervisor.
-    # We must fully remove it from that supervisor before starting our own.
-    if Process.whereis(Dust.Core.Supervisor) do
-      Supervisor.terminate_child(Dust.Core.Supervisor, KeyStore)
-      Supervisor.delete_child(Dust.Core.Supervisor, KeyStore)
-    end
-
-    # Also clean up any ExUnit-supervised instance from a previous test
-    _ = stop_supervised(KeyStore)
-  end
-
-  defp start_fresh_key_store(path) do
-    stop_app_key_store()
+  defp start_key_store!(path) do
     start_supervised!({KeyStore, [key_path: path]})
   end
 
@@ -36,7 +23,7 @@ defmodule Dust.Core.KeyStoreTest do
       path = unique_key_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_key_store(path)
+      start_key_store!(path)
 
       assert {:error, :locked} = KeyStore.get_key()
       refute KeyStore.has_key?()
@@ -46,7 +33,7 @@ defmodule Dust.Core.KeyStoreTest do
       path = unique_key_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_key_store(path)
+      start_key_store!(path)
 
       refute File.exists?(path)
     end
@@ -59,7 +46,7 @@ defmodule Dust.Core.KeyStoreTest do
       path = unique_key_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_key_store(path)
+      start_key_store!(path)
 
       assert :ok = KeyStore.unlock(@test_password)
       assert {:ok, key} = KeyStore.get_key()
@@ -71,7 +58,7 @@ defmodule Dust.Core.KeyStoreTest do
       path = unique_key_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_key_store(path)
+      start_key_store!(path)
       :ok = KeyStore.unlock(@test_password)
 
       assert File.exists?(path)
@@ -84,7 +71,7 @@ defmodule Dust.Core.KeyStoreTest do
       path = unique_key_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_key_store(path)
+      start_key_store!(path)
       :ok = KeyStore.unlock(@test_password)
       {:ok, original_key} = KeyStore.get_key()
 
@@ -103,7 +90,7 @@ defmodule Dust.Core.KeyStoreTest do
       path = unique_key_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_key_store(path)
+      start_key_store!(path)
       :ok = KeyStore.unlock(@test_password)
 
       # Restart and try wrong password
@@ -118,7 +105,7 @@ defmodule Dust.Core.KeyStoreTest do
       path = unique_key_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_key_store(path)
+      start_key_store!(path)
       :ok = KeyStore.unlock(@test_password)
 
       assert {:error, :already_unlocked} = KeyStore.unlock(@test_password)
@@ -132,7 +119,7 @@ defmodule Dust.Core.KeyStoreTest do
       path = unique_key_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_key_store(path)
+      start_key_store!(path)
       :ok = KeyStore.unlock(@test_password)
       assert {:ok, _key} = KeyStore.get_key()
 
@@ -145,7 +132,7 @@ defmodule Dust.Core.KeyStoreTest do
       path = unique_key_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_key_store(path)
+      start_key_store!(path)
       :ok = KeyStore.unlock(@test_password)
       {:ok, original_key} = KeyStore.get_key()
 
@@ -164,7 +151,7 @@ defmodule Dust.Core.KeyStoreTest do
       path = unique_key_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_key_store(path)
+      start_key_store!(path)
 
       peer_key = :crypto.strong_rand_bytes(32)
       assert {:error, :locked} = KeyStore.set_key(peer_key)
@@ -174,7 +161,7 @@ defmodule Dust.Core.KeyStoreTest do
       path = unique_key_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_key_store(path)
+      start_key_store!(path)
       :ok = KeyStore.unlock(@test_password)
 
       peer_key = :crypto.strong_rand_bytes(32)
@@ -186,7 +173,7 @@ defmodule Dust.Core.KeyStoreTest do
       path = unique_key_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_key_store(path)
+      start_key_store!(path)
       :ok = KeyStore.unlock(@test_password)
 
       peer_key = :crypto.strong_rand_bytes(32)
@@ -212,7 +199,7 @@ defmodule Dust.Core.KeyStoreTest do
       path = unique_key_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_key_store(path)
+      start_key_store!(path)
       refute KeyStore.has_key?()
     end
 
@@ -220,7 +207,7 @@ defmodule Dust.Core.KeyStoreTest do
       path = unique_key_path()
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_key_store(path)
+      start_key_store!(path)
       :ok = KeyStore.unlock(@test_password)
       assert KeyStore.has_key?()
     end
@@ -235,7 +222,7 @@ defmodule Dust.Core.KeyStoreTest do
       File.write!(path, "this is not a valid key file at all")
       on_exit(fn -> File.rm(path) end)
 
-      start_fresh_key_store(path)
+      start_key_store!(path)
 
       assert {:error, :decrypt_failed} = KeyStore.unlock(@test_password)
       assert {:error, :locked} = KeyStore.get_key()
