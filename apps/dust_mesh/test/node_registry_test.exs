@@ -26,11 +26,11 @@ defmodule Dust.Mesh.NodeRegistryTest do
 
     test "reflects entries after :nodeup" do
       start_registry!()
-      send_info({:nodeup, :"peer@host"})
+      send_info({:nodeup, :peer@host})
 
       registry = NodeRegistry.list()
-      assert Map.has_key?(registry, :"peer@host")
-      assert registry[:"peer@host"].status == :online
+      assert Map.has_key?(registry, :peer@host)
+      assert registry[:peer@host].status == :online
     end
   end
 
@@ -44,13 +44,13 @@ defmodule Dust.Mesh.NodeRegistryTest do
 
     test "returns only online nodes after a mix of up/down" do
       start_registry!()
-      send_info({:nodeup, :"a@host"})
-      send_info({:nodeup, :"b@host"})
-      send_info({:nodedown, :"a@host"})
+      send_info({:nodeup, :a@host})
+      send_info({:nodeup, :b@host})
+      send_info({:nodedown, :a@host})
 
       online = NodeRegistry.online_nodes()
-      assert :"b@host" in online
-      refute :"a@host" in online
+      assert :b@host in online
+      refute :a@host in online
     end
   end
 
@@ -59,20 +59,20 @@ defmodule Dust.Mesh.NodeRegistryTest do
   describe "status/1" do
     test "returns :unknown for a never-seen node" do
       start_registry!()
-      assert NodeRegistry.status(:"never@host") == :unknown
+      assert NodeRegistry.status(:never@host) == :unknown
     end
 
     test "returns :online after :nodeup" do
       start_registry!()
-      send_info({:nodeup, :"peer@host"})
-      assert NodeRegistry.status(:"peer@host") == :online
+      send_info({:nodeup, :peer@host})
+      assert NodeRegistry.status(:peer@host) == :online
     end
 
     test "returns :offline after :nodedown" do
       start_registry!()
-      send_info({:nodeup, :"peer@host"})
-      send_info({:nodedown, :"peer@host"})
-      assert NodeRegistry.status(:"peer@host") == :offline
+      send_info({:nodeup, :peer@host})
+      send_info({:nodedown, :peer@host})
+      assert NodeRegistry.status(:peer@host) == :offline
     end
   end
 
@@ -81,21 +81,21 @@ defmodule Dust.Mesh.NodeRegistryTest do
   describe "nodeup/nodedown" do
     test "offline nodes are retained, not removed" do
       start_registry!()
-      send_info({:nodeup, :"peer@host"})
-      send_info({:nodedown, :"peer@host"})
+      send_info({:nodeup, :peer@host})
+      send_info({:nodedown, :peer@host})
 
       registry = NodeRegistry.list()
-      assert Map.has_key?(registry, :"peer@host")
-      assert registry[:"peer@host"].status == :offline
+      assert Map.has_key?(registry, :peer@host)
+      assert registry[:peer@host].status == :offline
     end
 
     test "a node can go online → offline → online again" do
       start_registry!()
-      send_info({:nodeup, :"peer@host"})
-      send_info({:nodedown, :"peer@host"})
-      send_info({:nodeup, :"peer@host"})
+      send_info({:nodeup, :peer@host})
+      send_info({:nodedown, :peer@host})
+      send_info({:nodeup, :peer@host})
 
-      assert NodeRegistry.status(:"peer@host") == :online
+      assert NodeRegistry.status(:peer@host) == :online
     end
   end
 
@@ -104,9 +104,9 @@ defmodule Dust.Mesh.NodeRegistryTest do
   describe ":presence message" do
     test "marks a node as online" do
       start_registry!()
-      send_info({:presence, :"remote@host"})
+      send_info({:presence, :remote@host})
 
-      assert NodeRegistry.status(:"remote@host") == :online
+      assert NodeRegistry.status(:remote@host) == :online
     end
   end
 
@@ -115,7 +115,7 @@ defmodule Dust.Mesh.NodeRegistryTest do
   describe ":sync_request" do
     test "handles sync_request without crashing and state is preserved" do
       start_registry!()
-      send_info({:nodeup, :"a@host"})
+      send_info({:nodeup, :a@host})
 
       # A sync_request from node() causes the NodeRegistry to send
       # {:sync_response, Node.self(), registry} to {NodeRegistry, node()},
@@ -123,18 +123,18 @@ defmodule Dust.Mesh.NodeRegistryTest do
       # state is unchanged.
       send_info({:sync_request, node()})
 
-      assert NodeRegistry.status(:"a@host") == :online
+      assert NodeRegistry.status(:a@host) == :online
     end
 
     test "handles sync_request from a remote node name" do
       start_registry!()
-      send_info({:nodeup, :"a@host"})
+      send_info({:nodeup, :a@host})
 
       # When from_node is a remote node, send goes to {NodeRegistry, remote},
       # which is a no-op locally but the GenServer must not crash.
-      send_info({:sync_request, :"remote@host"})
+      send_info({:sync_request, :remote@host})
 
-      assert NodeRegistry.status(:"a@host") == :online
+      assert NodeRegistry.status(:a@host) == :online
     end
   end
 
@@ -145,37 +145,37 @@ defmodule Dust.Mesh.NodeRegistryTest do
       start_registry!()
 
       their_registry = %{
-        :"new@host" => %{status: :online, seen_at: DateTime.utc_now()}
+        :new@host => %{status: :online, seen_at: DateTime.utc_now()}
       }
 
-      send_info({:sync_response, :"peer@host", their_registry})
+      send_info({:sync_response, :peer@host, their_registry})
 
-      assert NodeRegistry.status(:"new@host") == :online
+      assert NodeRegistry.status(:new@host) == :online
     end
 
     test "local :online beats peer :offline" do
       start_registry!()
-      send_info({:nodeup, :"a@host"})
+      send_info({:nodeup, :a@host})
 
       their_registry = %{
-        :"a@host" => %{status: :offline, seen_at: DateTime.utc_now()}
+        :a@host => %{status: :offline, seen_at: DateTime.utc_now()}
       }
 
-      send_info({:sync_response, :"peer@host", their_registry})
-      assert NodeRegistry.status(:"a@host") == :online
+      send_info({:sync_response, :peer@host, their_registry})
+      assert NodeRegistry.status(:a@host) == :online
     end
 
     test "peer :online beats local :offline" do
       start_registry!()
-      send_info({:nodeup, :"a@host"})
-      send_info({:nodedown, :"a@host"})
+      send_info({:nodeup, :a@host})
+      send_info({:nodedown, :a@host})
 
       their_registry = %{
-        :"a@host" => %{status: :online, seen_at: DateTime.utc_now()}
+        :a@host => %{status: :online, seen_at: DateTime.utc_now()}
       }
 
-      send_info({:sync_response, :"peer@host", their_registry})
-      assert NodeRegistry.status(:"a@host") == :online
+      send_info({:sync_response, :peer@host, their_registry})
+      assert NodeRegistry.status(:a@host) == :online
     end
 
     test "both offline keeps the more recent seen_at" do
@@ -186,20 +186,20 @@ defmodule Dust.Mesh.NodeRegistryTest do
 
       # Seed local registry with an offline node at old_time
       local_offline = %{
-        :"a@host" => %{status: :offline, seen_at: old_time}
+        :a@host => %{status: :offline, seen_at: old_time}
       }
 
-      send_info({:sync_response, :"x@host", local_offline})
+      send_info({:sync_response, :x@host, local_offline})
 
       # Now merge a peer registry with the same node at new_time
       their_registry = %{
-        :"a@host" => %{status: :offline, seen_at: new_time}
+        :a@host => %{status: :offline, seen_at: new_time}
       }
 
-      send_info({:sync_response, :"peer@host", their_registry})
+      send_info({:sync_response, :peer@host, their_registry})
 
       registry = NodeRegistry.list()
-      assert registry[:"a@host"].seen_at == new_time
+      assert registry[:a@host].seen_at == new_time
     end
 
     test "both offline keeps local when local is newer" do
@@ -210,19 +210,19 @@ defmodule Dust.Mesh.NodeRegistryTest do
 
       # Seed local registry with the newer entry
       local_offline = %{
-        :"a@host" => %{status: :offline, seen_at: new_time}
+        :a@host => %{status: :offline, seen_at: new_time}
       }
 
-      send_info({:sync_response, :"x@host", local_offline})
+      send_info({:sync_response, :x@host, local_offline})
 
       their_registry = %{
-        :"a@host" => %{status: :offline, seen_at: old_time}
+        :a@host => %{status: :offline, seen_at: old_time}
       }
 
-      send_info({:sync_response, :"peer@host", their_registry})
+      send_info({:sync_response, :peer@host, their_registry})
 
       registry = NodeRegistry.list()
-      assert registry[:"a@host"].seen_at == new_time
+      assert registry[:a@host].seen_at == new_time
     end
   end
 
@@ -233,26 +233,26 @@ defmodule Dust.Mesh.NodeRegistryTest do
       start_registry!()
       NodeRegistry.subscribe()
 
-      send_info({:nodeup, :"peer@host"})
+      send_info({:nodeup, :peer@host})
 
       assert_receive {:node_registry_changed, online_nodes}
-      assert :"peer@host" in online_nodes
+      assert :peer@host in online_nodes
     end
 
     test "notification includes only online nodes" do
       start_registry!()
       NodeRegistry.subscribe()
 
-      send_info({:nodeup, :"a@host"})
-      send_info({:nodeup, :"b@host"})
-      send_info({:nodedown, :"a@host"})
+      send_info({:nodeup, :a@host})
+      send_info({:nodeup, :b@host})
+      send_info({:nodedown, :a@host})
 
       # Drain intermediate messages and check last one
       online =
         receive_until_last(:node_registry_changed)
 
-      assert :"b@host" in online
-      refute :"a@host" in online
+      assert :b@host in online
+      refute :a@host in online
     end
   end
 
