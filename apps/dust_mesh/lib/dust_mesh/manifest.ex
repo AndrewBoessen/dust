@@ -42,7 +42,8 @@ defmodule Dust.Mesh.Manifest do
   persisted alongside the file's encrypted key in the `FileIndex`.
   """
   @spec store_file_stream(String.t(), FileMeta.t(), Enumerable.t(ChunkMeta.t())) :: :ok
-  def store_file_stream(file_uuid, %FileMeta{} = file_meta, chunk_meta_stream) do
+  def store_file_stream(file_uuid, %FileMeta{} = file_meta, chunk_meta_stream)
+      when is_binary(file_uuid) do
     chunk_id_list =
       Enum.map(chunk_meta_stream, fn chunk_meta -> store_chunk(chunk_meta) end)
 
@@ -62,7 +63,7 @@ defmodule Dust.Mesh.Manifest do
   Returns `{:error, :not_found}` if the file UUID is not in the index.
   """
   @spec remove_file(String.t()) :: :ok | {:error, :not_found}
-  def remove_file(file_uuid) do
+  def remove_file(file_uuid) when is_binary(file_uuid) do
     case FileIndex.get(file_uuid) do
       nil ->
         {:error, :not_found}

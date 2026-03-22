@@ -52,12 +52,46 @@ defmodule Dust.Mesh.SharedMap do
         {:noreply, state}
       end
 
+      def handle_info(unexpected, state) do
+        Logger.warning("#{__MODULE__}: received unexpected message: #{inspect(unexpected)}")
+        {:noreply, state}
+      end
+
       # ── Protected CRDT helpers — called by the using module's typed API ──────
 
-      defp crdt_put(key, value), do: DeltaCrdt.put(@crdt_name, key, value)
-      defp crdt_delete(key), do: DeltaCrdt.delete(@crdt_name, key)
-      defp crdt_get(key), do: DeltaCrdt.get(@crdt_name, key)
-      defp crdt_to_map(), do: DeltaCrdt.to_map(@crdt_name)
+      defp crdt_put(key, value) do
+        DeltaCrdt.put(@crdt_name, key, value)
+        :ok
+      rescue
+        e ->
+          Logger.error("#{__MODULE__}: crdt_put failed: #{Exception.message(e)}")
+          {:error, :crdt_unavailable}
+      end
+
+      defp crdt_delete(key) do
+        DeltaCrdt.delete(@crdt_name, key)
+        :ok
+      rescue
+        e ->
+          Logger.error("#{__MODULE__}: crdt_delete failed: #{Exception.message(e)}")
+          {:error, :crdt_unavailable}
+      end
+
+      defp crdt_get(key) do
+        DeltaCrdt.get(@crdt_name, key)
+      rescue
+        e ->
+          Logger.error("#{__MODULE__}: crdt_get failed: #{Exception.message(e)}")
+          nil
+      end
+
+      defp crdt_to_map do
+        DeltaCrdt.to_map(@crdt_name)
+      rescue
+        e ->
+          Logger.error("#{__MODULE__}: crdt_to_map failed: #{Exception.message(e)}")
+          %{}
+      end
 
       # Allow using modules to override callbacks if needed
       defoverridable init: 1, handle_info: 2, child_spec: 1

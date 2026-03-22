@@ -173,4 +173,24 @@ defmodule Dust.Mesh.ManifestTest do
       assert FileIndex.get("missing") == nil
     end
   end
+
+  # ── Input validation ───────────────────────────────────────────────────
+
+  describe "input validation" do
+    test "store_file_stream raises FunctionClauseError for non-binary uuid" do
+      start_manifest!()
+
+      assert_raise FunctionClauseError, fn ->
+        Manifest.store_file_stream(123, make_file_meta(), [])
+      end
+    end
+
+    test "remove_file raises FunctionClauseError for non-binary uuid" do
+      start_manifest!()
+
+      assert_raise FunctionClauseError, fn ->
+        Manifest.remove_file(nil)
+      end
+    end
+  end
 end

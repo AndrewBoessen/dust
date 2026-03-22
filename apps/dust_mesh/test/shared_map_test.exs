@@ -114,5 +114,14 @@ defmodule Dust.Mesh.SharedMapTest do
       :sys.get_state(TestSharedMap)
       assert Process.whereis(TestSharedMap) != nil
     end
+
+    test "logs warning for unexpected message and stays alive" do
+      start_shared_map!()
+
+      send(TestSharedMap, {:totally_unexpected, :data})
+
+      :sys.get_state(TestSharedMap)
+      assert Process.whereis(TestSharedMap) != nil
+    end
   end
 end

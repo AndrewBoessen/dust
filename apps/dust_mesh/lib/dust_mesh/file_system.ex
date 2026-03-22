@@ -18,6 +18,8 @@ defmodule Dust.Mesh.FileSystem do
 
   alias Dust.Mesh.FileSystem.{DirMap, FileMap}
 
+  require Logger
+
   # ── Types ───────────────────────────────────────────────────────────────────
 
   @type uuid :: String.t()
@@ -46,33 +48,38 @@ defmodule Dust.Mesh.FileSystem do
   is stored; you are responsible for tracking the root UUID yourself, e.g. in
   application config or a dedicated singleton key).
 
-  Returns `{:ok, new_dir_id}`.
+  Returns `{:ok, new_dir_id}` or `{:error, :parent_not_found}` if a non-nil
+  parent ID does not exist.
   """
-  @spec mkdir(uuid() | nil, String.t()) :: {:ok, uuid()}
-  def mkdir(parent_id, name) do
-    id = generate_uuid()
+  @spec mkdir(uuid() | nil, String.t()) :: {:ok, uuid()} | {:error, :parent_not_found}
+  def mkdir(parent_id, name) when is_binary(name) do
+    if parent_id != nil and DirMap.get(parent_id) == nil do
+      {:error, :parent_not_found}
+    else
+      id = generate_uuid()
 
-    entry = %{
-      name: name,
-      dirs: MapSet.new(),
-      files: MapSet.new(),
-      created_at: DateTime.utc_now()
-    }
+      entry = %{
+        name: name,
+        dirs: MapSet.new(),
+        files: MapSet.new(),
+        created_at: DateTime.utc_now()
+      }
 
-    DirMap.put(id, entry)
+      DirMap.put(id, entry)
 
-    if parent_id do
-      update_dir(parent_id, fn parent ->
-        %{parent | dirs: MapSet.put(parent.dirs, id)}
-      end)
+      if parent_id do
+        update_dir!(parent_id, fn parent ->
+          %{parent | dirs: MapSet.put(parent.dirs, id)}
+        end)
+      end
+
+      {:ok, id}
     end
-
-    {:ok, id}
   end
 
   @doc "Returns the raw directory entry for `dir_id`, or `nil` if not found."
   @spec get_dir(uuid()) :: dir_entry() | nil
-  def get_dir(dir_id), do: DirMap.get(dir_id)
+  def get_dir(dir_id) when is_binary(dir_id), do: DirMap.get(dir_id)
 
   @doc """
   Lists the immediate children of a directory.
@@ -83,7 +90,7 @@ defmodule Dust.Mesh.FileSystem do
     - `:files` — list of `%{id, name, ...metadata}` for child files
   """
   @spec ls(uuid()) :: %{dirs: [map()], files: [map()]} | {:error, :not_found}
-  def ls(dir_id) do
+  def ls(dir_id) when is_binary(dir_id) do
     case DirMap.get(dir_id) do
       nil ->
         {:error, :not_found}
@@ -115,7 +122,7 @@ defmodule Dust.Mesh.FileSystem do
 
   @doc "Renames a directory in-place (does not move it)."
   @spec rename_dir(uuid(), String.t()) :: :ok | {:error, :not_found}
-  def rename_dir(dir_id, new_name) do
+  def rename_dir(dir_id, new_name) when is_binary(dir_id) and is_binary(new_name) do
     update_dir(dir_id, fn entry -> %{entry | name: new_name} end)
   end
 
@@ -126,7 +133,7 @@ defmodule Dust.Mesh.FileSystem do
   encouraging callers to remove contents first.
   """
   @spec rmdir(uuid(), uuid() | nil) :: :ok | {:error, :not_found | :not_empty}
-  def rmdir(dir_id, parent_id) do
+  def rmdir(dir_id, parent_id) when is_binary(dir_id) do
     case DirMap.get(dir_id) do
       nil ->
         {:error, :not_found}
@@ -138,7 +145,7 @@ defmodule Dust.Mesh.FileSystem do
           DirMap.delete(dir_id)
 
           if parent_id do
-            update_dir(parent_id, fn parent ->
+            update_dir!(parent_id, fn parent ->
               %{parent | dirs: MapSet.delete(parent.dirs, dir_id)}
             end)
           end
@@ -159,7 +166,9 @@ defmodule Dust.Mesh.FileSystem do
   Returns `{:ok, file_id}`.
   """
   @spec put_file(uuid(), String.t(), map()) :: {:ok, uuid()} | {:error, :dir_not_found}
-  def put_file(dir_id, name, metadata \\ %{}) do
+  def put_file(dir_id, name, metadata \\ %{})
+
+  def put_file(dir_id, name, metadata) when is_binary(dir_id) and is_binary(name) do
     case DirMap.get(dir_id) do
       nil ->
         {:error, :dir_not_found}
@@ -174,7 +183,7 @@ defmodule Dust.Mesh.FileSystem do
 
         FileMap.put(id, file)
 
-        update_dir(dir_id, fn entry ->
+        update_dir!(dir_id, fn entry ->
           %{entry | files: MapSet.put(entry.files, id)}
         end)
 
@@ -184,7 +193,7 @@ defmodule Dust.Mesh.FileSystem do
 
   @doc "Returns full metadata for a file, including its `id`, or `nil` if not found."
   @spec stat(uuid()) :: map() | nil
-  def stat(file_id) do
+  def stat(file_id) when is_binary(file_id) do
     case FileMap.get(file_id) do
       nil -> nil
       meta -> Map.put(meta, :id, file_id)
@@ -193,7 +202,7 @@ defmodule Dust.Mesh.FileSystem do
 
   @doc "Updates file metadata by merging `updates` into the existing metadata map."
   @spec update_file(uuid(), map()) :: :ok | {:error, :not_found}
-  def update_file(file_id, updates) do
+  def update_file(file_id, updates) when is_binary(file_id) and is_map(updates) do
     case FileMap.get(file_id) do
       nil ->
         {:error, :not_found}
@@ -208,22 +217,36 @@ defmodule Dust.Mesh.FileSystem do
   Moves a file from `source_dir_id` to `dest_dir_id`.
 
   The file metadata is unchanged; only the directory membership sets are
-  updated. This is an O(1) operation — no data is copied.
+  updated. If unlinking from the source succeeds but linking to the
+  destination fails, the file is re-linked to the source to prevent orphans.
   """
   @spec mv_file(uuid(), uuid(), uuid()) :: :ok | {:error, :not_found}
-  def mv_file(file_id, source_dir_id, dest_dir_id) do
+  def mv_file(file_id, source_dir_id, dest_dir_id)
+      when is_binary(file_id) and is_binary(source_dir_id) and is_binary(dest_dir_id) do
     with %{} <- FileMap.get(file_id),
          %{} <- DirMap.get(source_dir_id),
          %{} <- DirMap.get(dest_dir_id) do
-      update_dir(source_dir_id, fn entry ->
+      update_dir!(source_dir_id, fn entry ->
         %{entry | files: MapSet.delete(entry.files, file_id)}
       end)
 
-      update_dir(dest_dir_id, fn entry ->
-        %{entry | files: MapSet.put(entry.files, file_id)}
-      end)
+      case update_dir(dest_dir_id, fn entry ->
+             %{entry | files: MapSet.put(entry.files, file_id)}
+           end) do
+        :ok ->
+          :ok
 
-      :ok
+        {:error, :not_found} ->
+          Logger.warning(
+            "FileSystem.mv_file: dest dir #{dest_dir_id} vanished during move, rolling back"
+          )
+
+          update_dir!(source_dir_id, fn entry ->
+            %{entry | files: MapSet.put(entry.files, file_id)}
+          end)
+
+          {:error, :not_found}
+      end
     else
       nil -> {:error, :not_found}
     end
@@ -231,7 +254,7 @@ defmodule Dust.Mesh.FileSystem do
 
   @doc "Deletes a file and removes it from its parent directory."
   @spec rm_file(uuid(), uuid()) :: :ok | {:error, :not_found}
-  def rm_file(file_id, dir_id) do
+  def rm_file(file_id, dir_id) when is_binary(file_id) and is_binary(dir_id) do
     case FileMap.get(file_id) do
       nil ->
         {:error, :not_found}
@@ -239,7 +262,7 @@ defmodule Dust.Mesh.FileSystem do
       _meta ->
         FileMap.delete(file_id)
 
-        update_dir(dir_id, fn entry ->
+        update_dir!(dir_id, fn entry ->
           %{entry | files: MapSet.delete(entry.files, file_id)}
         end)
 
@@ -267,6 +290,19 @@ defmodule Dust.Mesh.FileSystem do
 
       entry ->
         DirMap.put(dir_id, fun.(entry))
+        :ok
+    end
+  end
+
+  @doc false
+  @spec update_dir!(uuid(), (dir_entry() -> dir_entry())) :: :ok
+  defp update_dir!(dir_id, fun) do
+    case update_dir(dir_id, fun) do
+      :ok ->
+        :ok
+
+      {:error, :not_found} ->
+        Logger.warning("FileSystem: directory #{dir_id} vanished during update (TOCTOU race)")
         :ok
     end
   end

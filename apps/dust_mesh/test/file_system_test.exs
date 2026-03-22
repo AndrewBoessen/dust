@@ -40,6 +40,19 @@ defmodule Dust.Mesh.FileSystemTest do
       child = FileSystem.get_dir(child_id)
       assert child.name == "child"
     end
+
+    test "returns {:error, :parent_not_found} for non-existent parent" do
+      start_file_system!()
+      assert {:error, :parent_not_found} = FileSystem.mkdir("nonexistent", "child")
+    end
+
+    test "raises FunctionClauseError for non-binary name" do
+      start_file_system!()
+
+      assert_raise FunctionClauseError, fn ->
+        FileSystem.mkdir(nil, 123)
+      end
+    end
   end
 
   # ── get_dir/1 ────────────────────────────────────────────────────────────
