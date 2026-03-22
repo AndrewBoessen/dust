@@ -9,7 +9,9 @@ defmodule Dust.Mesh.Application do
       {Registry, keys: :duplicate, name: Dust.Mesh.Registry},
       Dust.Mesh.NodeRegistry,
       Dust.Mesh.FileSystem.DirMap,
-      Dust.Mesh.FileSystem.FileMap
+      Dust.Mesh.FileSystem.FileMap,
+      Dust.Mesh.Manifest.FileIndex,
+      Dust.Mesh.Manifest.ChunkIndex
     ]
 
     Supervisor.start_link(children, strategy: :one_for_one, name: Dust.Mesh.Supervisor)
