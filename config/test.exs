@@ -1,5 +1,8 @@
 import Config
 
+# Hide info logs
+config :logger, level: :warning
+
 # Use fast Argon2 hashing for tests only
 config :argon2_elixir,
   t_cost: 1,
