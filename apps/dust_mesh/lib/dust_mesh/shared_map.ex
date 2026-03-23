@@ -25,7 +25,13 @@ defmodule Dust.Mesh.SharedMap do
       @spec start_link(keyword()) :: Supervisor.on_start()
       def start_link(_opts) do
         children = [
-          {DeltaCrdt, [crdt: DeltaCrdt.AWLWWMap, name: @crdt_name, sync_interval: 200]},
+          {DeltaCrdt,
+           [
+             crdt: DeltaCrdt.AWLWWMap,
+             name: @crdt_name,
+             sync_interval: 200,
+             storage_module: Dust.Mesh.SharedMap.Storage
+           ]},
           %{
             id: :"#{__MODULE__}.Server",
             start: {GenServer, :start_link, [__MODULE__, [], [name: __MODULE__]]}
@@ -113,6 +119,23 @@ defmodule Dust.Mesh.SharedMap do
 
       # Allow using modules to override callbacks if needed
       defoverridable init: 1, handle_info: 2, child_spec: 1
+    end
+  end
+
+  defmodule Storage do
+    @moduledoc """
+    Persists DeltaCrdt state to an embedded CubDB instance.
+    """
+    @behaviour DeltaCrdt.Storage
+
+    @impl true
+    def write(crdt_name, storage_format) do
+      CubDB.put(Dust.Mesh.Database, crdt_name, storage_format)
+    end
+
+    @impl true
+    def read(crdt_name) do
+      CubDB.get(Dust.Mesh.Database, crdt_name)
     end
   end
 end

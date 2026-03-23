@@ -5,8 +5,11 @@ defmodule Dust.Mesh.Application do
 
   @impl true
   def start(_type, _args) do
+    data_dir = Application.get_env(:dust_mesh, :data_dir, Path.expand("~/.dust/dust_mesh_db"))
+
     children = [
       {Registry, keys: :duplicate, name: Dust.Mesh.Registry},
+      {CubDB, data_dir: data_dir, name: Dust.Mesh.Database},
       Dust.Mesh.NodeRegistry,
       Dust.Mesh.FileSystem.DirMap,
       Dust.Mesh.FileSystem.FileMap,

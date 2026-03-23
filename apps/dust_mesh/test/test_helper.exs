@@ -5,4 +5,7 @@ Application.put_env(:dust_mesh, :bridge_module, Dust.Bridge.Mock)
 # Without this, the `mod:` auto-start conflicts with `start_supervised!`.
 Application.stop(:dust_mesh)
 
+# Clean up old test DBs
+File.rm_rf!("/tmp/dust_mesh_test_data")
+
 ExUnit.start()

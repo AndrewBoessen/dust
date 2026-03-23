@@ -15,7 +15,12 @@ defmodule Dust.Mesh.SharedMapTest do
   # ── Helpers ──────────────────────────────────────────────────────────────
 
   defp start_deps! do
+    data_dir =
+      "/tmp/dust_mesh_test_data/test_#{:os.system_time(:millisecond)}_#{:erlang.unique_integer([:positive])}"
+
+    File.mkdir_p!(data_dir)
     start_supervised!({Registry, keys: :duplicate, name: Dust.Mesh.Registry})
+    start_supervised!({CubDB, data_dir: data_dir, name: Dust.Mesh.Database})
     start_supervised!(Dust.Mesh.NodeRegistry)
   end
 
@@ -99,7 +104,7 @@ defmodule Dust.Mesh.SharedMapTest do
       start_shared_map!()
 
       # Simulate a node_registry_changed message
-      send(TestSharedMap, {:node_registry_changed, [:"peer@host"]})
+      send(TestSharedMap, {:node_registry_changed, [:peer@host]})
 
       # The GenServer should still be alive after handling the message
       :sys.get_state(TestSharedMap)

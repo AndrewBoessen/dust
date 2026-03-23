@@ -8,7 +8,12 @@ defmodule Dust.Mesh.ManifestTest do
   # ── Helpers ──────────────────────────────────────────────────────────────
 
   defp start_manifest! do
+    data_dir =
+      "/tmp/dust_mesh_test_data/test_#{:os.system_time(:millisecond)}_#{:erlang.unique_integer([:positive])}"
+
+    File.mkdir_p!(data_dir)
     start_supervised!({Registry, keys: :duplicate, name: Dust.Mesh.Registry})
+    start_supervised!({CubDB, data_dir: data_dir, name: Dust.Mesh.Database})
     start_supervised!(Dust.Mesh.NodeRegistry)
     start_supervised!(FileIndex)
     start_supervised!(ChunkIndex)
