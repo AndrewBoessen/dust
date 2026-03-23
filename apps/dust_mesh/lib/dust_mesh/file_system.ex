@@ -1,3 +1,71 @@
+defmodule Dust.Mesh.FileSystem.DirMap do
+  @moduledoc """
+  Distributed shared map for directory entries.
+
+  Keys are UUID strings identifying a directory. Values are DirMap structs with
+  `:name`, `:dirs` (MapSet), `:files` (MapSet), and `:created_at`.
+  """
+
+  use Dust.Mesh.SharedMap
+
+  @enforce_keys [:name, :dirs, :files, :created_at]
+  defstruct [:name, :dirs, :files, :created_at]
+
+  @type t :: %__MODULE__{
+          name: String.t(),
+          dirs: MapSet.t(Dust.Mesh.FileSystem.uuid()),
+          files: MapSet.t(Dust.Mesh.FileSystem.uuid()),
+          created_at: DateTime.t()
+        }
+
+  @spec put(String.t(), map() | t()) :: :ok | {:error, :crdt_unavailable}
+  def put(id, entry), do: crdt_put(id, entry)
+
+  @spec get(String.t()) :: map() | nil
+  def get(id), do: crdt_get(id)
+
+  @spec delete(String.t()) :: :ok | {:error, :crdt_unavailable}
+  def delete(id), do: crdt_delete(id)
+
+  @spec all() :: map()
+  def all, do: crdt_to_map()
+end
+
+defmodule Dust.Mesh.FileSystem.FileMap do
+  @moduledoc """
+  Distributed shared map for file metadata.
+
+  Keys are UUID strings identifying a file. Values are FileMap structs
+  for metadata with `:created_at` and `:name` always present. Directory
+  membership is tracked entirely in `DirMap`.
+  """
+
+  use Dust.Mesh.SharedMap
+
+  @enforce_keys [:name, :created_at]
+  defstruct [:name, :mime, :size, :checksum, :created_at]
+
+  @type t :: %__MODULE__{
+          name: String.t(),
+          mime: String.t() | nil,
+          size: non_neg_integer() | nil,
+          checksum: String.t() | nil,
+          created_at: DateTime.t()
+        }
+
+  @spec put(String.t(), map() | t()) :: :ok | {:error, :crdt_unavailable}
+  def put(id, metadata), do: crdt_put(id, metadata)
+
+  @spec get(String.t()) :: map() | nil
+  def get(id), do: crdt_get(id)
+
+  @spec delete(String.t()) :: :ok | {:error, :crdt_unavailable}
+  def delete(id), do: crdt_delete(id)
+
+  @spec all() :: map()
+  def all, do: crdt_to_map()
+end
+
 defmodule Dust.Mesh.FileSystem do
   @moduledoc """
   A distributed file system built on top of `Dust.Mesh.SharedMap`.
@@ -24,20 +92,9 @@ defmodule Dust.Mesh.FileSystem do
 
   @type uuid :: String.t()
 
-  @type dir_entry :: %{
-          name: String.t(),
-          dirs: MapSet.t(uuid()),
-          files: MapSet.t(uuid()),
-          created_at: DateTime.t()
-        }
+  @type dir_entry :: DirMap.t()
 
-  @type file_metadata :: %{
-          name: String.t(),
-          mime: String.t(),
-          size: non_neg_integer(),
-          checksum: String.t(),
-          created_at: DateTime.t()
-        }
+  @type file_metadata :: FileMap.t()
 
   # ── Directory API ───────────────────────────────────────────────────────────
 
@@ -59,7 +116,7 @@ defmodule Dust.Mesh.FileSystem do
     else
       id = generate_uuid()
 
-      entry = %{
+      entry = %DirMap{
         name: name,
         dirs: MapSet.new(),
         files: MapSet.new(),
@@ -186,10 +243,12 @@ defmodule Dust.Mesh.FileSystem do
       _entry ->
         id = generate_uuid()
 
-        file =
+        file_attrs =
           metadata
           |> Map.put(:name, name)
           |> Map.put(:created_at, DateTime.utc_now())
+
+        file = struct(FileMap, file_attrs)
 
         case FileMap.put(id, file) do
           {:error, :crdt_unavailable} ->
@@ -341,55 +400,4 @@ defmodule Dust.Mesh.FileSystem do
       "#{p1}-#{p2}-#{p3}-#{p4}-#{rest}"
     end)
   end
-end
-
-# ── DirMap — distributed CRDT-backed map of directory entries ─────────────────
-
-defmodule Dust.Mesh.FileSystem.DirMap do
-  @moduledoc """
-  Distributed shared map for directory entries.
-
-  Keys are UUID strings identifying a directory. Values are maps with
-  `:name`, `:dirs` (MapSet), `:files` (MapSet), and `:created_at`.
-  """
-
-  use Dust.Mesh.SharedMap
-
-  @spec put(String.t(), map()) :: :ok | {:error, :crdt_unavailable}
-  def put(id, entry), do: crdt_put(id, entry)
-
-  @spec get(String.t()) :: map() | nil
-  def get(id), do: crdt_get(id)
-
-  @spec delete(String.t()) :: :ok | {:error, :crdt_unavailable}
-  def delete(id), do: crdt_delete(id)
-
-  @spec all() :: map()
-  def all, do: crdt_to_map()
-end
-
-# ── FileMap — distributed CRDT-backed map of file metadata ────────────────────
-
-defmodule Dust.Mesh.FileSystem.FileMap do
-  @moduledoc """
-  Distributed shared map for file metadata.
-
-  Keys are UUID strings identifying a file. Values are arbitrary metadata
-  maps with `:created_at` always present. Directory membership is tracked
-  entirely in `DirMap`.
-  """
-
-  use Dust.Mesh.SharedMap
-
-  @spec put(String.t(), map()) :: :ok | {:error, :crdt_unavailable}
-  def put(id, metadata), do: crdt_put(id, metadata)
-
-  @spec get(String.t()) :: map() | nil
-  def get(id), do: crdt_get(id)
-
-  @spec delete(String.t()) :: :ok | {:error, :crdt_unavailable}
-  def delete(id), do: crdt_delete(id)
-
-  @spec all() :: map()
-  def all, do: crdt_to_map()
 end

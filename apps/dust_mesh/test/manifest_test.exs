@@ -41,11 +41,11 @@ defmodule Dust.Mesh.ManifestTest do
       assert :ok = Manifest.store_file_stream("file-1", file_meta, [c1, c2])
 
       entry = FileIndex.get("file-1")
-      assert entry.encrypted_file_key == file_meta.encrypted_file_key
+      assert entry.file_meta.encrypted_file_key == file_meta.encrypted_file_key
       assert length(entry.chunks) == 2
     end
 
-    test "chunk IDs correspond to their encrypted_chunk_keys" do
+    test "chunk IDs correspond to their content hash" do
       start_manifest!()
 
       c1 = make_chunk_meta()
@@ -55,7 +55,7 @@ defmodule Dust.Mesh.ManifestTest do
       :ok = Manifest.store_file_stream("file-2", file_meta, [c1, c2])
 
       entry = FileIndex.get("file-2")
-      assert entry.chunks == [c1.encrypted_chunk_key, c2.encrypted_chunk_key]
+      assert entry.chunks == [c1.hash, c2.hash]
     end
 
     test "each chunk is stored in the ChunkIndex" do
@@ -66,9 +66,9 @@ defmodule Dust.Mesh.ManifestTest do
 
       :ok = Manifest.store_file_stream("file-3", file_meta, [c1])
 
-      chunk = ChunkIndex.get(c1.encrypted_chunk_key)
-      assert chunk.hash == c1.hash
-      assert chunk.size == 100
+      chunk = ChunkIndex.get(c1.hash)
+      assert chunk.chunk_meta.hash == c1.hash
+      assert chunk.chunk_meta.size == 100
       assert chunk.ref_count == 1
     end
 
