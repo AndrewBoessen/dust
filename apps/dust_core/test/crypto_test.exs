@@ -136,7 +136,7 @@ defmodule Dust.Core.CryptoTest do
       wrapped = Crypto.encrypt_with_master(file_key)
       file_meta = %FileMeta{encrypted_file_key: wrapped}
 
-      assert Crypto.decrypt_file_key(file_meta) == file_key
+      assert {:ok, ^file_key} = Crypto.decrypt_file_key(file_meta)
     end
 
     test "wrapped key has expected size (IV + tag + 32-byte key)" do

@@ -32,6 +32,7 @@ defmodule Dust.Mesh.NodeRegistry do
 
   # ── Public API ─────────────────────────────────────────────────────────────
 
+  @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
@@ -120,6 +121,11 @@ defmodule Dust.Mesh.NodeRegistry do
     {:noreply, notify(%{state | registry: new_registry})}
   end
 
+  def handle_info(unexpected, state) do
+    Logger.warning("NodeRegistry: received unexpected message: #{inspect(unexpected)}")
+    {:noreply, state}
+  end
+
   # ── Calls ──────────────────────────────────────────────────────────────────
 
   @impl true
@@ -144,6 +150,11 @@ defmodule Dust.Mesh.NodeRegistry do
       end
 
     {:reply, status, state}
+  end
+
+  def handle_call(unexpected, _from, state) do
+    Logger.warning("NodeRegistry: received unexpected call: #{inspect(unexpected)}")
+    {:reply, {:error, :unknown_call}, state}
   end
 
   # ── Private ────────────────────────────────────────────────────────────────

@@ -43,9 +43,15 @@ defmodule Dust.Mesh.KeyExchange do
 
     case bridge().request_key(peer_address) do
       {:ok, key} ->
-        :ok = KeyStore.set_key(key)
-        Logger.info("KeyExchange: master key received and stored")
-        serve_local_key()
+        case KeyStore.set_key(key) do
+          :ok ->
+            Logger.info("KeyExchange: master key received and stored")
+            serve_local_key()
+
+          {:error, reason} ->
+            Logger.error("KeyExchange: failed to store key: #{inspect(reason)}")
+            {:error, reason}
+        end
 
       {:error, reason} ->
         Logger.warning("KeyExchange: failed to get key from #{peer_address}: #{inspect(reason)}")

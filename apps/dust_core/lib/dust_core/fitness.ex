@@ -122,6 +122,7 @@ defmodule Dust.Core.Fitness do
     # ── Public API ───────────────────────────────────────────────────────────
 
     @doc "Start the ModelStore GenServer under a supervisor."
+    @spec start_link(keyword()) :: GenServer.on_start()
     def start_link(opts \\ []) do
       GenServer.start_link(__MODULE__, opts, name: __MODULE__)
     end
@@ -170,9 +171,21 @@ defmodule Dust.Core.Fitness do
     # ── Private ──────────────────────────────────────────────────────────────
 
     defp flush(persist_path) do
-      persist_path |> Path.dirname() |> File.mkdir_p!()
-      payload = :erlang.term_to_binary(Map.new(:ets.tab2list(@table)))
-      File.write!(persist_path, payload)
+      case File.mkdir_p(Path.dirname(persist_path)) do
+        :ok ->
+          payload = :erlang.term_to_binary(Map.new(:ets.tab2list(@table)))
+
+          case File.write(persist_path, payload) do
+            :ok -> :ok
+            {:error, reason} ->
+              Logger.error("ModelStore: failed to persist models to disk: #{inspect(reason)}")
+              {:error, reason}
+          end
+
+        {:error, reason} ->
+          Logger.error("ModelStore: failed to create persist directory: #{inspect(reason)}")
+          {:error, reason}
+      end
     end
 
     defp load(persist_path) do
@@ -180,12 +193,22 @@ defmodule Dust.Core.Fitness do
         {:error, :enoent} ->
           :ok
 
+        {:error, reason} ->
+          Logger.warning("ModelStore: could not read #{persist_path}: #{inspect(reason)}")
+          :ok
+
         {:ok, binary} ->
-          binary
-          |> :erlang.binary_to_term()
-          |> Enum.each(fn {node_id, model} ->
-            :ets.insert(@table, {node_id, model})
-          end)
+          try do
+            binary
+            |> :erlang.binary_to_term([:safe])
+            |> Enum.each(fn {node_id, model} ->
+              :ets.insert(@table, {node_id, model})
+            end)
+          rescue
+            e ->
+              Logger.warning("ModelStore: corrupt persist file, starting fresh: #{Exception.message(e)}")
+              :ok
+          end
       end
     end
 

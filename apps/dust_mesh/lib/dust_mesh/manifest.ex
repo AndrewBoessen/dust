@@ -41,19 +41,35 @@ defmodule Dust.Mesh.Manifest do
   deduplication via reference counting), and the resulting chunk ID list is
   persisted alongside the file's encrypted key in the `FileIndex`.
   """
-  @spec store_file_stream(String.t(), FileMeta.t(), Enumerable.t(ChunkMeta.t())) :: :ok
+  @spec store_file_stream(String.t(), FileMeta.t(), Enumerable.t(ChunkMeta.t())) ::
+          :ok | {:error, :crdt_unavailable}
   def store_file_stream(file_uuid, %FileMeta{} = file_meta, chunk_meta_stream)
       when is_binary(file_uuid) do
-    chunk_id_list =
-      Enum.map(chunk_meta_stream, fn chunk_meta -> store_chunk(chunk_meta) end)
+    result =
+      Enum.reduce_while(chunk_meta_stream, {:ok, []}, fn chunk_meta, {:ok, acc} ->
+        case store_chunk(chunk_meta) do
+          {:ok, chunk_id} -> {:cont, {:ok, [chunk_id | acc]}}
+          {:error, :crdt_unavailable} -> {:halt, {:error, :crdt_unavailable}}
+        end
+      end)
 
-    file_index = %{
-      encrypted_file_key: file_meta.encrypted_file_key,
-      chunks: chunk_id_list
-    }
+    case result do
+      {:error, :crdt_unavailable} ->
+        {:error, :crdt_unavailable}
 
-    FileIndex.put(file_uuid, file_index)
-    :ok
+      {:ok, reversed_ids} ->
+        chunk_id_list = Enum.reverse(reversed_ids)
+
+        file_index = %{
+          encrypted_file_key: file_meta.encrypted_file_key,
+          chunks: chunk_id_list
+        }
+
+        case FileIndex.put(file_uuid, file_index) do
+          {:error, :crdt_unavailable} -> {:error, :crdt_unavailable}
+          :ok -> :ok
+        end
+    end
   end
 
   @doc """
@@ -69,15 +85,18 @@ defmodule Dust.Mesh.Manifest do
         {:error, :not_found}
 
       %{chunks: chunks} ->
-        FileIndex.delete(file_uuid)
+        # Delete chunks first — if we crash mid-way, the file index still
+        # exists and cleanup can be retried. The reverse order (delete index
+        # first) would leave orphaned chunk entries with no way to find them.
         Enum.each(chunks, fn chunk -> ChunkIndex.delete(chunk) end)
+        FileIndex.delete(file_uuid)
         :ok
     end
   end
 
   # ── Private helpers ───────────────────────────────────────────────────────────
 
-  @spec store_chunk(ChunkMeta.t()) :: String.t()
+  @spec store_chunk(ChunkMeta.t()) :: {:ok, String.t()} | {:error, :crdt_unavailable}
   defp store_chunk(%ChunkMeta{} = chunk_meta) do
     index = %{
       hash: chunk_meta.hash,
@@ -86,8 +105,11 @@ defmodule Dust.Mesh.Manifest do
     }
 
     key = chunk_meta.encrypted_chunk_key
-    ChunkIndex.put(key, index)
-    key
+
+    case ChunkIndex.put(key, index) do
+      {:error, :crdt_unavailable} -> {:error, :crdt_unavailable}
+      :ok -> {:ok, key}
+    end
   end
 end
 
@@ -104,7 +126,7 @@ defmodule Dust.Mesh.Manifest.FileIndex do
   use Dust.Mesh.SharedMap
 
   @doc "Stores a file index entry under the given `id`."
-  @spec put(String.t(), map()) :: :ok
+  @spec put(String.t(), map()) :: :ok | {:error, :crdt_unavailable}
   def put(id, entry), do: crdt_put(id, entry)
 
   @doc "Returns the file index entry for `id`, or `nil` if not found."
@@ -112,7 +134,7 @@ defmodule Dust.Mesh.Manifest.FileIndex do
   def get(id), do: crdt_get(id)
 
   @doc "Deletes the file index entry for `id`."
-  @spec delete(String.t()) :: :ok
+  @spec delete(String.t()) :: :ok | {:error, :crdt_unavailable}
   def delete(id), do: crdt_delete(id)
 
   @doc "Returns all file index entries as a plain map."
@@ -138,7 +160,7 @@ defmodule Dust.Mesh.Manifest.ChunkIndex do
   Stores chunk metadata or increments the reference count if the key
   already exists.
   """
-  @spec put(String.t(), map()) :: :ok
+  @spec put(String.t(), map()) :: :ok | {:error, :crdt_unavailable}
   def put(id, entry) do
     case get(id) do
       nil ->
@@ -157,7 +179,7 @@ defmodule Dust.Mesh.Manifest.ChunkIndex do
   Decrements the reference count for `id`. Removes the entry entirely
   when the count reaches zero. No-ops if the key does not exist.
   """
-  @spec delete(String.t()) :: :ok
+  @spec delete(String.t()) :: :ok | {:error, :crdt_unavailable}
   def delete(id) do
     case get(id) do
       nil ->

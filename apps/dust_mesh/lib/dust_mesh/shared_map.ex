@@ -13,6 +13,7 @@ defmodule Dust.Mesh.SharedMap do
 
       # ── Child spec ──────────────────────────────────────────────────────────
 
+      @spec child_spec(keyword()) :: Supervisor.child_spec()
       def child_spec(_opts) do
         %{
           id: __MODULE__,
@@ -21,6 +22,7 @@ defmodule Dust.Mesh.SharedMap do
         }
       end
 
+      @spec start_link(keyword()) :: Supervisor.on_start()
       def start_link(_opts) do
         children = [
           {DeltaCrdt, [crdt: DeltaCrdt.AWLWWMap, name: @crdt_name, sync_interval: 200]},
@@ -66,6 +68,10 @@ defmodule Dust.Mesh.SharedMap do
         e ->
           Logger.error("#{__MODULE__}: crdt_put failed: #{Exception.message(e)}")
           {:error, :crdt_unavailable}
+      catch
+        :exit, reason ->
+          Logger.error("#{__MODULE__}: crdt_put failed (exit): #{inspect(reason)}")
+          {:error, :crdt_unavailable}
       end
 
       defp crdt_delete(key) do
@@ -75,6 +81,10 @@ defmodule Dust.Mesh.SharedMap do
         e ->
           Logger.error("#{__MODULE__}: crdt_delete failed: #{Exception.message(e)}")
           {:error, :crdt_unavailable}
+      catch
+        :exit, reason ->
+          Logger.error("#{__MODULE__}: crdt_delete failed (exit): #{inspect(reason)}")
+          {:error, :crdt_unavailable}
       end
 
       defp crdt_get(key) do
@@ -83,6 +93,10 @@ defmodule Dust.Mesh.SharedMap do
         e ->
           Logger.error("#{__MODULE__}: crdt_get failed: #{Exception.message(e)}")
           nil
+      catch
+        :exit, reason ->
+          Logger.error("#{__MODULE__}: crdt_get failed (exit): #{inspect(reason)}")
+          nil
       end
 
       defp crdt_to_map do
@@ -90,6 +104,10 @@ defmodule Dust.Mesh.SharedMap do
       rescue
         e ->
           Logger.error("#{__MODULE__}: crdt_to_map failed: #{Exception.message(e)}")
+          %{}
+      catch
+        :exit, reason ->
+          Logger.error("#{__MODULE__}: crdt_to_map failed (exit): #{inspect(reason)}")
           %{}
       end
 

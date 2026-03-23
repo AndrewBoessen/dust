@@ -77,16 +77,19 @@ defmodule Dust.Core.Crypto do
 
   @spec encrypt_with_master(binary()) :: binary()
   def encrypt_with_master(plaintext) do
-    encrypt_with_key(plaintext, get_master_key())
+    encrypt_with_key(plaintext, get_master_key!())
   end
 
-  @spec decrypt_file_key(FileMeta.t()) :: file_key() | {:error, :integrity_check_failed}
+  @spec decrypt_file_key(FileMeta.t()) :: {:ok, file_key()} | {:error, :integrity_check_failed}
   def decrypt_file_key(%FileMeta{encrypted_file_key: wrapped_key}) do
-    decrypt_with_key(wrapped_key, get_master_key())
+    case decrypt_with_key(wrapped_key, get_master_key!()) do
+      {:error, _} = err -> err
+      key when is_binary(key) -> {:ok, key}
+    end
   end
 
-  @spec get_master_key() :: master_key()
-  defp get_master_key do
+  @spec get_master_key!() :: master_key()
+  defp get_master_key! do
     case Dust.Core.KeyStore.get_key() do
       {:ok, key} -> key
       {:error, :locked} -> raise "KeyStore is locked – call Dust.Core.KeyStore.unlock/1 first"

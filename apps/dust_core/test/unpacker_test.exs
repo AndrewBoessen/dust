@@ -32,7 +32,7 @@ defmodule Dust.Core.UnpackerTest do
   defp pack_and_get_key(content) do
     path = write_tmp_file("unpack", content)
     {:ok, file_meta, stream} = Packer.process_file_stream(path)
-    file_key = Crypto.decrypt_file_key(file_meta)
+    {:ok, file_key} = Crypto.decrypt_file_key(file_meta)
     chunks = Enum.to_list(stream)
     {file_key, chunks}
   end
@@ -105,7 +105,7 @@ defmodule Dust.Core.UnpackerTest do
       path = write_tmp_file("roundtrip_small", original)
 
       {:ok, file_meta, stream} = Packer.process_file_stream(path)
-      file_key = Crypto.decrypt_file_key(file_meta)
+      {:ok, file_key} = Crypto.decrypt_file_key(file_meta)
 
       reassembled =
         stream
@@ -123,7 +123,7 @@ defmodule Dust.Core.UnpackerTest do
       path = write_tmp_file("roundtrip_large", original)
 
       {:ok, file_meta, stream} = Packer.process_file_stream(path)
-      file_key = Crypto.decrypt_file_key(file_meta)
+      {:ok, file_key} = Crypto.decrypt_file_key(file_meta)
 
       reassembled =
         stream
@@ -141,7 +141,7 @@ defmodule Dust.Core.UnpackerTest do
       path = write_tmp_file("roundtrip_exact", original)
 
       {:ok, file_meta, stream} = Packer.process_file_stream(path)
-      file_key = Crypto.decrypt_file_key(file_meta)
+      {:ok, file_key} = Crypto.decrypt_file_key(file_meta)
 
       chunks = Enum.to_list(stream)
       assert length(chunks) == 1

@@ -51,7 +51,8 @@ defmodule Dust.Mesh.FileSystem do
   Returns `{:ok, new_dir_id}` or `{:error, :parent_not_found}` if a non-nil
   parent ID does not exist.
   """
-  @spec mkdir(uuid() | nil, String.t()) :: {:ok, uuid()} | {:error, :parent_not_found}
+  @spec mkdir(uuid() | nil, String.t()) ::
+          {:ok, uuid()} | {:error, :parent_not_found | :crdt_unavailable}
   def mkdir(parent_id, name) when is_binary(name) do
     if parent_id != nil and DirMap.get(parent_id) == nil do
       {:error, :parent_not_found}
@@ -65,15 +66,19 @@ defmodule Dust.Mesh.FileSystem do
         created_at: DateTime.utc_now()
       }
 
-      DirMap.put(id, entry)
+      case DirMap.put(id, entry) do
+        {:error, :crdt_unavailable} ->
+          {:error, :crdt_unavailable}
 
-      if parent_id do
-        update_dir!(parent_id, fn parent ->
-          %{parent | dirs: MapSet.put(parent.dirs, id)}
-        end)
+        :ok ->
+          if parent_id do
+            update_dir!(parent_id, fn parent ->
+              %{parent | dirs: MapSet.put(parent.dirs, id)}
+            end)
+          end
+
+          {:ok, id}
       end
-
-      {:ok, id}
     end
   end
 
@@ -132,7 +137,7 @@ defmodule Dust.Mesh.FileSystem do
   Returns `{:error, :not_empty}` if the directory still contains children,
   encouraging callers to remove contents first.
   """
-  @spec rmdir(uuid(), uuid() | nil) :: :ok | {:error, :not_found | :not_empty}
+  @spec rmdir(uuid(), uuid() | nil) :: :ok | {:error, :not_found | :not_empty | :crdt_unavailable}
   def rmdir(dir_id, parent_id) when is_binary(dir_id) do
     case DirMap.get(dir_id) do
       nil ->
@@ -142,15 +147,19 @@ defmodule Dust.Mesh.FileSystem do
         if MapSet.size(entry.dirs) > 0 or MapSet.size(entry.files) > 0 do
           {:error, :not_empty}
         else
-          DirMap.delete(dir_id)
+          case DirMap.delete(dir_id) do
+            {:error, :crdt_unavailable} ->
+              {:error, :crdt_unavailable}
 
-          if parent_id do
-            update_dir!(parent_id, fn parent ->
-              %{parent | dirs: MapSet.delete(parent.dirs, dir_id)}
-            end)
+            :ok ->
+              if parent_id do
+                update_dir!(parent_id, fn parent ->
+                  %{parent | dirs: MapSet.delete(parent.dirs, dir_id)}
+                end)
+              end
+
+              :ok
           end
-
-          :ok
         end
     end
   end
@@ -165,7 +174,8 @@ defmodule Dust.Mesh.FileSystem do
 
   Returns `{:ok, file_id}`.
   """
-  @spec put_file(uuid(), String.t(), map()) :: {:ok, uuid()} | {:error, :dir_not_found}
+  @spec put_file(uuid(), String.t(), map()) ::
+          {:ok, uuid()} | {:error, :dir_not_found | :crdt_unavailable}
   def put_file(dir_id, name, metadata \\ %{})
 
   def put_file(dir_id, name, metadata) when is_binary(dir_id) and is_binary(name) do
@@ -181,13 +191,17 @@ defmodule Dust.Mesh.FileSystem do
           |> Map.put(:name, name)
           |> Map.put(:created_at, DateTime.utc_now())
 
-        FileMap.put(id, file)
+        case FileMap.put(id, file) do
+          {:error, :crdt_unavailable} ->
+            {:error, :crdt_unavailable}
 
-        update_dir!(dir_id, fn entry ->
-          %{entry | files: MapSet.put(entry.files, id)}
-        end)
+          :ok ->
+            update_dir!(dir_id, fn entry ->
+              %{entry | files: MapSet.put(entry.files, id)}
+            end)
 
-        {:ok, id}
+            {:ok, id}
+        end
     end
   end
 
@@ -201,15 +215,17 @@ defmodule Dust.Mesh.FileSystem do
   end
 
   @doc "Updates file metadata by merging `updates` into the existing metadata map."
-  @spec update_file(uuid(), map()) :: :ok | {:error, :not_found}
+  @spec update_file(uuid(), map()) :: :ok | {:error, :not_found | :crdt_unavailable}
   def update_file(file_id, updates) when is_binary(file_id) and is_map(updates) do
     case FileMap.get(file_id) do
       nil ->
         {:error, :not_found}
 
       existing ->
-        FileMap.put(file_id, Map.merge(existing, updates))
-        :ok
+        case FileMap.put(file_id, Map.merge(existing, updates)) do
+          {:error, :crdt_unavailable} -> {:error, :crdt_unavailable}
+          :ok -> :ok
+        end
     end
   end
 
@@ -253,20 +269,24 @@ defmodule Dust.Mesh.FileSystem do
   end
 
   @doc "Deletes a file and removes it from its parent directory."
-  @spec rm_file(uuid(), uuid()) :: :ok | {:error, :not_found}
+  @spec rm_file(uuid(), uuid()) :: :ok | {:error, :not_found | :crdt_unavailable}
   def rm_file(file_id, dir_id) when is_binary(file_id) and is_binary(dir_id) do
     case FileMap.get(file_id) do
       nil ->
         {:error, :not_found}
 
       _meta ->
-        FileMap.delete(file_id)
+        case FileMap.delete(file_id) do
+          {:error, :crdt_unavailable} ->
+            {:error, :crdt_unavailable}
 
-        update_dir!(dir_id, fn entry ->
-          %{entry | files: MapSet.delete(entry.files, file_id)}
-        end)
+          :ok ->
+            update_dir!(dir_id, fn entry ->
+              %{entry | files: MapSet.delete(entry.files, file_id)}
+            end)
 
-        :ok
+            :ok
+        end
     end
   end
 
@@ -282,15 +302,18 @@ defmodule Dust.Mesh.FileSystem do
 
   # ── Private helpers ─────────────────────────────────────────────────────────
 
-  @spec update_dir(uuid(), (dir_entry() -> dir_entry())) :: :ok | {:error, :not_found}
+  @spec update_dir(uuid(), (dir_entry() -> dir_entry())) ::
+          :ok | {:error, :not_found | :crdt_unavailable}
   defp update_dir(dir_id, fun) do
     case DirMap.get(dir_id) do
       nil ->
         {:error, :not_found}
 
       entry ->
-        DirMap.put(dir_id, fun.(entry))
-        :ok
+        case DirMap.put(dir_id, fun.(entry)) do
+          {:error, :crdt_unavailable} -> {:error, :crdt_unavailable}
+          :ok -> :ok
+        end
     end
   end
 
@@ -332,13 +355,13 @@ defmodule Dust.Mesh.FileSystem.DirMap do
 
   use Dust.Mesh.SharedMap
 
-  @spec put(String.t(), map()) :: :ok
+  @spec put(String.t(), map()) :: :ok | {:error, :crdt_unavailable}
   def put(id, entry), do: crdt_put(id, entry)
 
   @spec get(String.t()) :: map() | nil
   def get(id), do: crdt_get(id)
 
-  @spec delete(String.t()) :: :ok
+  @spec delete(String.t()) :: :ok | {:error, :crdt_unavailable}
   def delete(id), do: crdt_delete(id)
 
   @spec all() :: map()
@@ -358,13 +381,13 @@ defmodule Dust.Mesh.FileSystem.FileMap do
 
   use Dust.Mesh.SharedMap
 
-  @spec put(String.t(), map()) :: :ok
+  @spec put(String.t(), map()) :: :ok | {:error, :crdt_unavailable}
   def put(id, metadata), do: crdt_put(id, metadata)
 
   @spec get(String.t()) :: map() | nil
   def get(id), do: crdt_get(id)
 
-  @spec delete(String.t()) :: :ok
+  @spec delete(String.t()) :: :ok | {:error, :crdt_unavailable}
   def delete(id), do: crdt_delete(id)
 
   @spec all() :: map()

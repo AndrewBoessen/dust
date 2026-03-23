@@ -29,6 +29,7 @@ defmodule Dust.Core.KeyStore do
   # ── Public API ──────────────────────────────────────────────────────────
 
   @doc "Start the KeyStore GenServer under a supervisor."
+  @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
@@ -122,9 +123,16 @@ defmodule Dust.Core.KeyStore do
       {:error, :enoent} ->
         # First boot — generate a new master key
         key = :crypto.strong_rand_bytes(@key_size)
-        :ok = write_key_to_disk(key, key_path, password)
-        Logger.info("KeyStore: generated new master key at #{key_path}")
-        {:reply, :ok, %{state | key: key, password: password, status: :ready}}
+
+        case write_key_to_disk(key, key_path, password) do
+          :ok ->
+            Logger.info("KeyStore: generated new master key at #{key_path}")
+            {:reply, :ok, %{state | key: key, password: password, status: :ready}}
+
+          {:error, reason} ->
+            Logger.error("KeyStore: generated key but failed to persist – #{inspect(reason)}")
+            {:reply, {:error, reason}, state}
+        end
 
       {:error, reason} ->
         Logger.error("KeyStore: failed to read key file – #{inspect(reason)}")
@@ -167,16 +175,16 @@ defmodule Dust.Core.KeyStore do
   # ── Disk persistence (encrypted at rest) ────────────────────────────────
 
   defp write_key_to_disk(key, path, password) do
-    File.mkdir_p!(Path.dirname(path))
+    with :ok <- File.mkdir_p(Path.dirname(path)) do
+      salt = :crypto.strong_rand_bytes(@salt_size)
+      device_key = derive_device_key(salt, password)
+      iv = :crypto.strong_rand_bytes(16)
 
-    salt = :crypto.strong_rand_bytes(@salt_size)
-    device_key = derive_device_key(salt, password)
-    iv = :crypto.strong_rand_bytes(16)
+      {ciphertext, tag} =
+        :crypto.crypto_one_time_aead(@aes_mode, device_key, iv, key, "", true)
 
-    {ciphertext, tag} =
-      :crypto.crypto_one_time_aead(@aes_mode, device_key, iv, key, "", true)
-
-    File.write(path, salt <> iv <> tag <> ciphertext)
+      File.write(path, salt <> iv <> tag <> ciphertext)
+    end
   end
 
   # ── Device key derivation ───────────────────────────────────────────────
