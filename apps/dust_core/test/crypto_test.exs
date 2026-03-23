@@ -123,7 +123,9 @@ defmodule Dust.Core.CryptoTest do
         Supervisor.delete_child(Dust.Core.Supervisor, Dust.Core.KeyStore)
       end
 
-      path = Path.join(System.tmp_dir!(), "dust_crypto_test_#{System.unique_integer([:positive])}.key")
+      path =
+        Path.join(System.tmp_dir!(), "dust_crypto_test_#{System.unique_integer([:positive])}.key")
+
       start_supervised!({Dust.Core.KeyStore, [key_path: path]})
       :ok = Dust.Core.KeyStore.unlock("test_password")
       on_exit(fn -> File.rm(path) end)

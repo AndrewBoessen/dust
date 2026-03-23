@@ -103,7 +103,7 @@ defmodule Dust.Core.Fitness do
     @moduledoc """
     Persisted ETS-backed store for NodeEMA models.
 
-    Models survive restarts via a binary file in `.dust/fitness_models.bin`.
+    Models survive restarts via a CubDB database in `.dust/fitness_models/`.
     The GenServer owns the ETS table for its lifetime — if it crashes and is
     restarted by the supervisor, the table is recreated and models reloaded
     from disk automatically.
@@ -151,69 +151,38 @@ defmodule Dust.Core.Fitness do
 
     @impl true
     def init(opts) do
-      persist_path = Keyword.get(opts, :persist_path, default_persist_path())
+      db = Keyword.get(opts, :db, Dust.Core.Database)
 
       :ets.new(@table, [:named_table, :public, read_concurrency: true])
-      load(persist_path)
+      load(db)
 
-      Logger.info("ModelStore: loaded fitness models from #{persist_path}")
-      {:ok, %{persist_path: persist_path}}
+      Logger.info("ModelStore: loaded fitness models from CubDB #{inspect(db)}")
+      {:ok, %{db: db}}
     end
 
     @impl true
     def handle_call({:update, node_id, observation}, _from, state) do
       updated = node_id |> get() |> NodeEMA.update(observation)
       :ets.insert(@table, {node_id, updated})
-      flush(state.persist_path)
+      CubDB.put(state.db, node_id, updated)
       {:reply, updated, state}
     end
 
     # ── Private ──────────────────────────────────────────────────────────────
 
-    defp flush(persist_path) do
-      case File.mkdir_p(Path.dirname(persist_path)) do
-        :ok ->
-          payload = :erlang.term_to_binary(Map.new(:ets.tab2list(@table)))
-
-          case File.write(persist_path, payload) do
-            :ok -> :ok
-            {:error, reason} ->
-              Logger.error("ModelStore: failed to persist models to disk: #{inspect(reason)}")
-              {:error, reason}
-          end
-
-        {:error, reason} ->
-          Logger.error("ModelStore: failed to create persist directory: #{inspect(reason)}")
-          {:error, reason}
+    defp load(db) do
+      try do
+        # CubDB.select returns a stream of all key/value pairs
+        # We iterate and insert them all into the ETS cache on startup
+        Enum.each(CubDB.select(db), fn {node_id, model} ->
+          :ets.insert(@table, {node_id, model})
+        end)
+      rescue
+        e ->
+          Logger.warning(
+            "ModelStore: failed to load from CubDB, starting fresh: #{Exception.message(e)}"
+          )
       end
-    end
-
-    defp load(persist_path) do
-      case File.read(persist_path) do
-        {:error, :enoent} ->
-          :ok
-
-        {:error, reason} ->
-          Logger.warning("ModelStore: could not read #{persist_path}: #{inspect(reason)}")
-          :ok
-
-        {:ok, binary} ->
-          try do
-            binary
-            |> :erlang.binary_to_term([:safe])
-            |> Enum.each(fn {node_id, model} ->
-              :ets.insert(@table, {node_id, model})
-            end)
-          rescue
-            e ->
-              Logger.warning("ModelStore: corrupt persist file, starting fresh: #{Exception.message(e)}")
-              :ok
-          end
-      end
-    end
-
-    defp default_persist_path do
-      Application.get_env(:dust_core, :fitness_path, Path.expand("~/.dust/fitness_models.bin"))
     end
   end
 

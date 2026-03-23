@@ -9,11 +9,13 @@ defmodule Dust.Core.FitnessTest do
   # ── Helpers ───────────────────────────────────────────────────────────────
 
   defp unique_persist_path do
-    Path.join(@tmp_dir, "dust_test_fitness_#{System.unique_integer([:positive])}.bin")
+    Path.join(@tmp_dir, "dust_test_fitness_#{System.unique_integer([:positive])}")
   end
 
   defp start_model_store!(path) do
-    start_supervised!({ModelStore, [persist_path: path]})
+    File.mkdir_p!(path)
+    start_supervised!({CubDB, data_dir: path, name: Dust.Core.Database})
+    start_supervised!({ModelStore, [db: Dust.Core.Database]})
   end
 
   # ── Observation ───────────────────────────────────────────────────────────
@@ -183,7 +185,7 @@ defmodule Dust.Core.FitnessTest do
   describe "ModelStore.get/1" do
     test "returns default model for an unknown node" do
       path = unique_persist_path()
-      on_exit(fn -> File.rm(path) end)
+      on_exit(fn -> File.rm_rf(path) end)
 
       start_model_store!(path)
 
@@ -192,7 +194,7 @@ defmodule Dust.Core.FitnessTest do
 
     test "returns stored model after an update" do
       path = unique_persist_path()
-      on_exit(fn -> File.rm(path) end)
+      on_exit(fn -> File.rm_rf(path) end)
 
       start_model_store!(path)
 
@@ -206,7 +208,7 @@ defmodule Dust.Core.FitnessTest do
   describe "ModelStore.update/2" do
     test "returns the updated model" do
       path = unique_persist_path()
-      on_exit(fn -> File.rm(path) end)
+      on_exit(fn -> File.rm_rf(path) end)
 
       start_model_store!(path)
 
@@ -220,7 +222,7 @@ defmodule Dust.Core.FitnessTest do
 
     test "accumulates multiple observations" do
       path = unique_persist_path()
-      on_exit(fn -> File.rm(path) end)
+      on_exit(fn -> File.rm_rf(path) end)
 
       start_model_store!(path)
 
@@ -236,7 +238,7 @@ defmodule Dust.Core.FitnessTest do
 
     test "different node ids maintain independent models" do
       path = unique_persist_path()
-      on_exit(fn -> File.rm(path) end)
+      on_exit(fn -> File.rm_rf(path) end)
 
       start_model_store!(path)
 
@@ -255,7 +257,7 @@ defmodule Dust.Core.FitnessTest do
   describe "ModelStore persistence" do
     test "persists models to disk on update" do
       path = unique_persist_path()
-      on_exit(fn -> File.rm(path) end)
+      on_exit(fn -> File.rm_rf(path) end)
 
       start_model_store!(path)
 
@@ -267,7 +269,7 @@ defmodule Dust.Core.FitnessTest do
 
     test "reloads models from disk on restart" do
       path = unique_persist_path()
-      on_exit(fn -> File.rm(path) end)
+      on_exit(fn -> File.rm_rf(path) end)
 
       start_model_store!(path)
 
@@ -276,14 +278,14 @@ defmodule Dust.Core.FitnessTest do
 
       # Restart with same path — simulates an application restart
       stop_supervised!(ModelStore)
-      start_supervised!({ModelStore, [persist_path: path]})
+      start_supervised!({ModelStore, [db: Dust.Core.Database]})
 
       assert ModelStore.get("node-a") == updated
     end
 
     test "starts cleanly with no persist file" do
       path = unique_persist_path()
-      on_exit(fn -> File.rm(path) end)
+      on_exit(fn -> File.rm_rf(path) end)
 
       start_model_store!(path)
 
@@ -296,7 +298,7 @@ defmodule Dust.Core.FitnessTest do
   describe "Fitness.score/1" do
     test "returns default score for a node never interacted with" do
       path = unique_persist_path()
-      on_exit(fn -> File.rm(path) end)
+      on_exit(fn -> File.rm_rf(path) end)
 
       start_model_store!(path)
 
@@ -305,7 +307,7 @@ defmodule Dust.Core.FitnessTest do
 
     test "score increases after successful interactions" do
       path = unique_persist_path()
-      on_exit(fn -> File.rm(path) end)
+      on_exit(fn -> File.rm_rf(path) end)
 
       start_model_store!(path)
 
@@ -317,7 +319,7 @@ defmodule Dust.Core.FitnessTest do
 
     test "score decreases after failed interactions" do
       path = unique_persist_path()
-      on_exit(fn -> File.rm(path) end)
+      on_exit(fn -> File.rm_rf(path) end)
 
       start_model_store!(path)
 
@@ -336,7 +338,7 @@ defmodule Dust.Core.FitnessTest do
   describe "Fitness.record/2" do
     test "returns the updated NodeEMA model" do
       path = unique_persist_path()
-      on_exit(fn -> File.rm(path) end)
+      on_exit(fn -> File.rm_rf(path) end)
 
       start_model_store!(path)
 
@@ -349,7 +351,7 @@ defmodule Dust.Core.FitnessTest do
 
     test "score reflects the most recently recorded observation" do
       path = unique_persist_path()
-      on_exit(fn -> File.rm(path) end)
+      on_exit(fn -> File.rm_rf(path) end)
 
       start_model_store!(path)
 

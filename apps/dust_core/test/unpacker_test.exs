@@ -20,6 +20,7 @@ defmodule Dust.Core.UnpackerTest do
     on_exit(fn -> File.rm(key_path) end)
     :ok
   end
+
   # ── Helpers ─────────────────────────────────────────────────────────────
 
   defp write_tmp_file(name, content) do
