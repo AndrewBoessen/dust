@@ -87,7 +87,7 @@ defmodule Dust.Mesh.NodeRegistry do
   # ── Net kernel events ──────────────────────────────────────────────────────
 
   @impl true
-  def handle_info({:nodeup, node}, state) do
+  def handle_info({:nodeup, node, _info}, state) do
     Logger.info("NodeRegistry: #{node} connected")
 
     new_registry = put_entry(state.registry, node, :online)
@@ -96,7 +96,7 @@ defmodule Dust.Mesh.NodeRegistry do
     {:noreply, notify(%{state | registry: new_registry})}
   end
 
-  def handle_info({:nodedown, node}, state) do
+  def handle_info({:nodedown, node, _info}, state) do
     Logger.info("NodeRegistry: #{node} disconnected")
 
     new_registry = put_entry(state.registry, node, :offline)
