@@ -4,10 +4,11 @@ defmodule Dust.Core do
 
   Submodules:
 
-    * `Dust.Core.Crypto`    — AES-256-GCM encryption/decryption, key types, and `FileMeta`/`ChunkMeta` structs
-    * `Dust.Core.KeyStore`  — master-key lifecycle (generation, persistence, peer sync)
-    * `Dust.Core.Packer`    — split and encrypt files into network-ready chunks
-    * `Dust.Core.Unpacker`  — decrypt chunks back into plaintext
-    * `Dust.Core.Fitness`   — score node fitness based on network stats
+    * `Dust.Core.Crypto`        — AES-256-GCM encryption/decryption, key types, and `FileMeta`/`ChunkMeta` structs
+    * `Dust.Core.ErasureCoding` — Reed-Solomon erasure coding for data redundancy
+    * `Dust.Core.KeyStore`      — master-key lifecycle (generation, persistence, peer sync)
+    * `Dust.Core.Packer`        — split and encrypt files into network-ready chunks
+    * `Dust.Core.Unpacker`      — decrypt chunks back into plaintext
+    * `Dust.Core.Fitness`       — score node fitness based on network stats
   """
 end
