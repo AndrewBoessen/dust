@@ -213,7 +213,7 @@ defmodule Dust.Mesh.Manifest do
     - `FileIndex`  — maps file UUIDs to their encrypted file key and
                      ordered list of chunk IDs.
 
-    - `ChunkIndex` — maps chunk IDs (encrypted chunk keys) to their
+    - `ChunkIndex` — maps chunk IDs (hashes) to their
                      content hash, size, and a reference count for
                      deduplication across files.
 
