@@ -27,7 +27,8 @@ defmodule Dust.Core.MixProject do
   defp deps do
     [
       {:argon2_elixir, "~> 4.1"},
-      {:cubdb, "~> 2.0.2"}
+      {:cubdb, "~> 2.0.2"},
+      {:reed_solomon_ex, "~> 0.1.3"}
     ]
   end
 end

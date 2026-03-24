@@ -14,7 +14,8 @@ defmodule Dust.Mesh.Application do
       Dust.Mesh.FileSystem.DirMap,
       Dust.Mesh.FileSystem.FileMap,
       Dust.Mesh.Manifest.FileIndex,
-      Dust.Mesh.Manifest.ChunkIndex
+      Dust.Mesh.Manifest.ChunkIndex,
+      Dust.Mesh.Manifest.ShardMap
     ]
 
     Supervisor.start_link(children, strategy: :one_for_one, name: Dust.Mesh.Supervisor)
