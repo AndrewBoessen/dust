@@ -5,12 +5,8 @@ defmodule Dust.Bridge.Application do
 
   @impl true
   def start(_type, _args) do
-    # Ensure OTP app is isolated
-    if Node.alive?() do
-      Node.set_cookie(Node.self(), :dust_mesh_cookie)
-    end
-
     children = [
+      Dust.Bridge.Secrets,
       Dust.Bridge,
       Dust.Bridge.Setup,
       Dust.Bridge.Discovery

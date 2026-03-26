@@ -29,16 +29,17 @@ defmodule Dust.Bridge do
   end
 
   @doc """
-  Request the master key from a peer node over Tailscale.
+  Request the master key and OTP cookie from a peer node over Tailscale using a token.
 
-  Returns `{:ok, <<key::binary-32>>}` on success.
+  Returns `{:ok, master_key_b64, otp_cookie}` on success.
   """
   @impl true
-  @spec request_key(String.t()) :: {:ok, binary()} | {:error, term()}
-  def request_key(peer_address) do
-    case send_command("KEY_REQUEST #{peer_address}", 30_000) do
-      {:ok, <<"OK:", key::binary-32>>} ->
-        {:ok, key}
+  @spec join(String.t(), String.t()) :: {:ok, String.t(), String.t()} | {:error, term()}
+  def join(peer_address, token) do
+    case send_command("JOIN #{peer_address} #{token}", 30_000) do
+      {:ok, <<"OK:", secrets::binary>>} ->
+        [master_key, otp_cookie] = String.split(secrets, ":", parts: 2)
+        {:ok, master_key, otp_cookie}
 
       {:ok, <<"ERR: ", reason::binary>>} ->
         {:error, reason}
@@ -52,15 +53,27 @@ defmodule Dust.Bridge do
   end
 
   @doc """
-  Tell the Go sidecar to start serving the master key to peers.
-
-  The key is sent as raw bytes in the command payload.
+  Tell the Go sidecar to start serving the master key and OTP cookie to peers.
   """
   @impl true
-  @spec serve_key(binary()) :: :ok | {:error, term()}
-  def serve_key(key) when byte_size(key) == 32 do
-    case send_command("KEY_SERVE " <> key) do
+  @spec serve_secrets(String.t(), String.t()) :: :ok | {:error, term()}
+  def serve_secrets(master_key_b64, otp_cookie) do
+    case send_command("SERVE_SECRETS #{master_key_b64}:#{otp_cookie}") do
       {:ok, <<"OK:", _::binary>>} -> :ok
+      {:ok, <<"ERR: ", reason::binary>>} -> {:error, reason}
+      error -> error
+    end
+  end
+
+  @doc """
+  Generates a one-time secure token and registers it with the sidecar.
+  """
+  @impl true
+  @spec create_invite() :: {:ok, String.t()} | {:error, term()}
+  def create_invite() do
+    token = :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
+    case send_command("INVITE_CREATE #{token}") do
+      {:ok, <<"OK:", _::binary>>} -> {:ok, token}
       {:ok, <<"ERR: ", reason::binary>>} -> {:error, reason}
       error -> error
     end

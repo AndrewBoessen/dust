@@ -13,6 +13,8 @@ defmodule Dust.Bridge.Setup do
     # Give the bridge a short moment to fully initialize
     Process.sleep(1000)
 
+    Dust.Bridge.Secrets.setup()
+
     Logger.info("Bridge Setup: Informing tsnet sidecar to expose EPMD and Distribution ports")
     # Tell tsnet sidecar to expose incoming Erlang distribution ports
     case Dust.Bridge.expose(4369) do

@@ -114,6 +114,7 @@ defmodule Dust.Core.KeyStore do
 
           plaintext ->
             Logger.info("KeyStore: unlocked master key from #{key_path}")
+            serve_secrets(plaintext)
             {:reply, :ok, %{state | key: plaintext, password: password, status: :ready}}
         end
 
@@ -121,12 +122,32 @@ defmodule Dust.Core.KeyStore do
         {:reply, {:error, :decrypt_failed}, state}
 
       {:error, :enoent} ->
-        # First boot — generate a new master key
-        key = :crypto.strong_rand_bytes(@key_size)
+        # First boot — check if the Bridge fetched a key from a peer
+        fetched_b64 =
+          try do
+            Dust.Bridge.Secrets.get_fetched_master_key()
+          rescue
+            _ -> nil
+          end
+
+        key =
+          if fetched_b64 do
+            Logger.info("KeyStore: Adopting master key fetched via Dust Bridge")
+            try do
+              Dust.Bridge.Secrets.clear_fetched_master_key()
+            rescue
+              _ -> :ok
+            end
+            Base.decode64!(fetched_b64)
+          else
+            Logger.info("KeyStore: generating new master key")
+            :crypto.strong_rand_bytes(@key_size)
+          end
 
         case write_key_to_disk(key, key_path, password) do
           :ok ->
-            Logger.info("KeyStore: generated new master key at #{key_path}")
+            Logger.info("KeyStore: master key persisted at #{key_path}")
+            serve_secrets(key)
             {:reply, :ok, %{state | key: key, password: password, status: :ready}}
 
           {:error, reason} ->
@@ -170,6 +191,17 @@ defmodule Dust.Core.KeyStore do
 
   def handle_call(:has_key?, _from, %{status: status} = state) do
     {:reply, status == :ready, state}
+  end
+
+  # Helper to start serving the key via bridge
+  defp serve_secrets(key) do
+    try do
+      otp_cookie = Node.get_cookie() |> to_string()
+      key_b64 = Base.encode64(key)
+      Dust.Bridge.serve_secrets(key_b64, otp_cookie)
+    rescue
+      err -> Logger.warning("KeyStore: Dust.Bridge is not available to serve secrets: #{inspect(err)}")
+    end
   end
 
   # ── Disk persistence (encrypted at rest) ────────────────────────────────
