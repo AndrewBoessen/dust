@@ -34,5 +34,11 @@ jobs:
           restore-keys: ${{ runner.os }}-mix-
       - name: Install dependencies
         run: mix deps.get
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Build Go sidecar
+        run: cd apps/dust_bridge/native/tsnet_sidecar && go build -o tsnet_sidecar
       - name: Run tests
         run: mix test
