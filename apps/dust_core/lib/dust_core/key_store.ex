@@ -95,7 +95,16 @@ defmodule Dust.Core.KeyStore do
   @impl true
   def init(opts) do
     key_path = Keyword.get(opts, :key_path, default_key_path())
-    {:ok, %{key: nil, password: nil, status: :locked, key_path: key_path}}
+    enable_bridge = Keyword.get(opts, :enable_bridge, true)
+
+    {:ok,
+     %{
+       key: nil,
+       password: nil,
+       status: :locked,
+       key_path: key_path,
+       enable_bridge: enable_bridge
+     }}
   end
 
   @impl true
@@ -114,7 +123,7 @@ defmodule Dust.Core.KeyStore do
 
           plaintext ->
             Logger.info("KeyStore: unlocked master key from #{key_path}")
-            serve_secrets(plaintext)
+            serve_secrets(plaintext, state)
             {:reply, :ok, %{state | key: plaintext, password: password, status: :ready}}
         end
 
@@ -133,11 +142,13 @@ defmodule Dust.Core.KeyStore do
         key =
           if fetched_b64 do
             Logger.info("KeyStore: Adopting master key fetched via Dust Bridge")
+
             try do
               Dust.Bridge.Secrets.clear_fetched_master_key()
             rescue
               _ -> :ok
             end
+
             Base.decode64!(fetched_b64)
           else
             Logger.info("KeyStore: generating new master key")
@@ -147,7 +158,7 @@ defmodule Dust.Core.KeyStore do
         case write_key_to_disk(key, key_path, password) do
           :ok ->
             Logger.info("KeyStore: master key persisted at #{key_path}")
-            serve_secrets(key)
+            serve_secrets(key, state)
             {:reply, :ok, %{state | key: key, password: password, status: :ready}}
 
           {:error, reason} ->
@@ -194,15 +205,18 @@ defmodule Dust.Core.KeyStore do
   end
 
   # Helper to start serving the key via bridge
-  defp serve_secrets(key) do
+  defp serve_secrets(key, %{enable_bridge: true}) do
     try do
       otp_cookie = Node.get_cookie() |> to_string()
       key_b64 = Base.encode64(key)
       Dust.Bridge.serve_secrets(key_b64, otp_cookie)
     rescue
-      err -> Logger.warning("KeyStore: Dust.Bridge is not available to serve secrets: #{inspect(err)}")
+      err ->
+        Logger.warning("KeyStore: Dust.Bridge is not available to serve secrets: #{inspect(err)}")
     end
   end
+
+  defp serve_secrets(_key, _state), do: :ok
 
   # ── Disk persistence (encrypted at rest) ────────────────────────────────
 

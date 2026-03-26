@@ -13,7 +13,7 @@ defmodule Dust.Core.KeyStoreTest do
   end
 
   defp start_key_store!(path) do
-    start_supervised!({KeyStore, [key_path: path]})
+    start_supervised!({KeyStore, [key_path: path, enable_bridge: false]})
   end
 
   # ── Locked state on boot ───────────────────────────────────────────────
@@ -77,7 +77,7 @@ defmodule Dust.Core.KeyStoreTest do
 
       # Restart with same path
       stop_supervised!(KeyStore)
-      start_supervised!({KeyStore, [key_path: path]})
+      start_supervised!({KeyStore, [key_path: path, enable_bridge: false]})
 
       # Must unlock again
       assert {:error, :locked} = KeyStore.get_key()
@@ -95,7 +95,7 @@ defmodule Dust.Core.KeyStoreTest do
 
       # Restart and try wrong password
       stop_supervised!(KeyStore)
-      start_supervised!({KeyStore, [key_path: path]})
+      start_supervised!({KeyStore, [key_path: path, enable_bridge: false]})
 
       assert {:error, :decrypt_failed} = KeyStore.unlock("wrong_password")
       assert {:error, :locked} = KeyStore.get_key()
@@ -180,7 +180,7 @@ defmodule Dust.Core.KeyStoreTest do
       :ok = KeyStore.set_key(peer_key)
 
       stop_supervised!(KeyStore)
-      start_supervised!({KeyStore, [key_path: path]})
+      start_supervised!({KeyStore, [key_path: path, enable_bridge: false]})
       :ok = KeyStore.unlock(@test_password)
 
       assert {:ok, ^peer_key} = KeyStore.get_key()
