@@ -8,4 +8,7 @@ defmodule Dust.Bridge.Behaviour do
 
   @callback request_key(String.t()) :: {:ok, binary()} | {:error, term()}
   @callback serve_key(binary()) :: :ok | {:error, term()}
+  @callback get_peers() :: {:ok, [String.t()]} | {:error, term()}
+  @callback proxy(String.t(), integer()) :: {:ok, integer()} | {:error, term()}
+  @callback expose(integer()) :: :ok | {:error, term()}
 end

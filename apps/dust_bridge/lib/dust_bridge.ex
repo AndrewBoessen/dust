@@ -13,8 +13,6 @@ defmodule Dust.Bridge do
 
   require Logger
 
-  @sidecar_path "native/tsnet_sidecar/tsnet_sidecar"
-
   # ── Public API ──────────────────────────────────────────────────────────
 
   @spec start_link(keyword()) :: GenServer.on_start()
@@ -68,17 +66,86 @@ defmodule Dust.Bridge do
     end
   end
 
+  @doc """
+  Gets all peer Tailscale IPs from the tsnet sidecar.
+  """
+  @impl true
+  @spec get_peers() :: {:ok, [String.t()]} | {:error, term()}
+  def get_peers() do
+    case send_command("PEERS") do
+      {:ok, <<"OK:", ips::binary>>} ->
+        ips_list = String.split(ips, ",", trim: true)
+        {:ok, ips_list}
+
+      {:ok, <<"ERR: ", reason::binary>>} ->
+        {:error, reason}
+
+      error ->
+        error
+    end
+  end
+
+  @doc """
+  Asks the go sidecar to proxy a connection to a target over Tailscale.
+  Returns the local port listening for the proxied connection.
+  """
+  @impl true
+  @spec proxy(String.t(), integer()) :: {:ok, integer()} | {:error, term()}
+  def proxy(target_ip, target_port) do
+    case send_command("PROXY #{target_ip}:#{target_port}") do
+      {:ok, <<"OK:", local_port_str::binary>>} ->
+        {port, _} = Integer.parse(local_port_str)
+        {:ok, port}
+
+      {:ok, <<"ERR: ", reason::binary>>} ->
+        {:error, reason}
+
+      error ->
+        error
+    end
+  end
+
+  @doc """
+  Asks the go sidecar to expose a local port on the `tsnet` Tailscale IP.
+  """
+  @impl true
+  @spec expose(integer()) :: :ok | {:error, term()}
+  def expose(port) do
+    case send_command("EXPOSE #{port}") do
+      {:ok, <<"OK:", _::binary>>} -> :ok
+      {:ok, <<"ERR: ", reason::binary>>} -> {:error, reason}
+      error -> error
+    end
+  end
+
   # ── GenServer callbacks ─────────────────────────────────────────────────
 
   @impl true
   def init(opts) do
     sidecar = Keyword.get(opts, :sidecar_path, sidecar_path())
 
+    node_prefix =
+      Node.self()
+      |> to_string()
+      |> String.split("@")
+      |> List.first()
+
+    # Determine unique Tailscale hostname and state directory
+    hostname = System.get_env("TS_HOSTNAME") || "dust-node-#{node_prefix}"
+
+    home_dir = System.user_home!()
+    default_state_dir = Path.join([home_dir, ".dust", "tsnet-state-#{node_prefix}"])
+    state_dir = System.get_env("TS_STATE_DIR") || default_state_dir
+
     port =
       Port.open({:spawn_executable, sidecar}, [
         :binary,
         :exit_status,
-        {:packet, 4}
+        {:packet, 4},
+        env: [
+          {~c"TS_HOSTNAME", to_charlist(hostname)},
+          {~c"TS_STATE_DIR", to_charlist(state_dir)}
+        ]
       ])
 
     {:ok, %{port: port}}
@@ -111,6 +178,7 @@ defmodule Dust.Bridge do
   # ── Private ─────────────────────────────────────────────────────────────
 
   defp sidecar_path do
-    Application.get_env(:dust_bridge, :sidecar_path, @sidecar_path)
+    default_path = Path.expand("../native/tsnet_sidecar/tsnet_sidecar", __DIR__)
+    Application.get_env(:dust_bridge, :sidecar_path, default_path)
   end
 end

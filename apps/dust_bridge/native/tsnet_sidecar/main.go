@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -20,10 +21,23 @@ const (
 
 func main() {
 	// Configure the tsnet Server
-	stateDir, _ := os.Getwd()
+	hostname := os.Getenv("TS_HOSTNAME")
+	if hostname == "" {
+		hostname = "dust-node"
+	}
+
+	stateDir := os.Getenv("TS_STATE_DIR")
+	if stateDir == "" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			homeDir, _ = os.Getwd()
+		}
+		stateDir = filepath.Join(homeDir, ".dust", "tsnet-state-"+hostname)
+	}
+
 	srv := &tsnet.Server{
-		Hostname: "dust-node",
-		Dir:      filepath.Join(stateDir, "tsnet-state"),
+		Hostname: hostname,
+		Dir:      stateDir,
 		AuthKey:  os.Getenv("TS_AUTHKEY"),
 	}
 	defer srv.Close()
@@ -32,6 +46,14 @@ func main() {
 	if err := srv.Start(); err != nil {
 		log.Fatalf("Failed to start tsnet: %v", err)
 	}
+
+	// Wait for the node to be connected to the Tailnet in the background
+	// so the Elixir port loop doesn't block while waiting for auth.
+	go func() {
+		if _, err := srv.Up(context.Background()); err != nil {
+			log.Printf("Failed to connect to tailnet: %v", err)
+		}
+	}()
 
 	// The Port Communication Loop
 	// Elixir uses BigEndian for {:packet, 4}
@@ -94,6 +116,46 @@ func handleCommand(srv *tsnet.Server, cmd []byte) []byte {
 		go serveKeyToPeers(srv, keyBytes)
 		return []byte("OK: key server started")
 
+	case "PEERS":
+		lc, err := srv.LocalClient()
+		if err != nil {
+			return []byte(fmt.Sprintf("ERR: %v", err))
+		}
+		st, err := lc.Status(context.Background())
+		if err != nil {
+			return []byte(fmt.Sprintf("ERR: %v", err))
+		}
+		var ips []string
+		for _, peer := range st.Peer {
+			if len(peer.TailscaleIPs) > 0 {
+				ips = append(ips, peer.TailscaleIPs[0].String())
+			}
+		}
+		return []byte("OK:" + strings.Join(ips, ","))
+
+	case "PROXY":
+		// PROXY <targetIP> <targetPort>
+		if len(parts) < 2 {
+			return []byte("ERR: PROXY requires target IP and port")
+		}
+		target := strings.TrimSpace(parts[1])
+		localLn, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			return []byte(fmt.Sprintf("ERR: %v", err))
+		}
+		go proxyOutgoing(srv, localLn, target)
+		addr := localLn.Addr().(*net.TCPAddr)
+		return []byte(fmt.Sprintf("OK:%d", addr.Port))
+
+	case "EXPOSE":
+		// EXPOSE <port>
+		if len(parts) < 2 {
+			return []byte("ERR: EXPOSE requires port number")
+		}
+		portStr := strings.TrimSpace(parts[1])
+		go exposeIncoming(srv, portStr)
+		return []byte("OK: exposed " + portStr)
+
 	case "GET_STATUS":
 		return []byte("OK: running")
 
@@ -102,9 +164,72 @@ func handleCommand(srv *tsnet.Server, cmd []byte) []byte {
 	}
 }
 
+func proxyOutgoing(srv *tsnet.Server, ln net.Listener, target string) {
+	defer ln.Close()
+	for {
+		localConn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		go func(lConn net.Conn) {
+			defer lConn.Close()
+			tConn, err := srv.Dial(context.Background(), "tcp", target)
+			if err != nil {
+				log.Printf("PROXY dial error: %v", err)
+				return
+			}
+			defer tConn.Close()
+			errc := make(chan error, 2)
+			go func() {
+				_, err := io.Copy(tConn, lConn)
+				errc <- err
+			}()
+			go func() {
+				_, err := io.Copy(lConn, tConn)
+				errc <- err
+			}()
+			<-errc
+		}(localConn)
+	}
+}
+
+func exposeIncoming(srv *tsnet.Server, portStr string) {
+	ln, err := srv.Listen("tcp", ":"+portStr)
+	if err != nil {
+		log.Printf("EXPOSE listen error: %v", err)
+		return
+	}
+	defer ln.Close()
+	for {
+		tsConn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		go func(tConn net.Conn) {
+			defer tConn.Close()
+			localConn, err := net.Dial("tcp", "127.0.0.1:"+portStr)
+			if err != nil {
+				log.Printf("EXPOSE dial local error: %v", err)
+				return
+			}
+			defer localConn.Close()
+			errc := make(chan error, 2)
+			go func() {
+				_, err := io.Copy(localConn, tConn)
+				errc <- err
+			}()
+			go func() {
+				_, err := io.Copy(tConn, localConn)
+				errc <- err
+			}()
+			<-errc
+		}(tsConn)
+	}
+}
+
 // requestKeyFromPeer dials a peer over Tailscale and reads 32 bytes.
 func requestKeyFromPeer(srv *tsnet.Server, peerAddr string) ([]byte, error) {
-	conn, err := srv.Dial("tcp", fmt.Sprintf("%s:%d", peerAddr, keyExchangePort))
+	conn, err := srv.Dial(context.Background(), "tcp", fmt.Sprintf("%s:%d", peerAddr, keyExchangePort))
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial peer %s: %w", peerAddr, err)
 	}
