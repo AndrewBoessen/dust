@@ -28,7 +28,8 @@ defmodule Dust.Core.MixProject do
     [
       {:argon2_elixir, "~> 4.1"},
       {:cubdb, "~> 2.0.2"},
-      {:reed_solomon_ex, "~> 0.1.3"}
+      {:reed_solomon_ex, "~> 0.1.3"},
+      {:dust_bridge, in_umbrella: true}
     ]
   end
 end
