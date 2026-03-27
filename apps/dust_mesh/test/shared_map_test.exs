@@ -15,21 +15,30 @@ defmodule Dust.Mesh.SharedMapTest do
   # ── Helpers ──────────────────────────────────────────────────────────────
 
   defp start_deps! do
-    data_dir =
-      Path.join(
-        System.tmp_dir!(),
-        "dust_mesh_test_data/test_#{:os.system_time(:millisecond)}_#{:erlang.unique_integer([:positive])}"
-      )
+    data_dir = Application.get_env(:dust_utilities, :persist_dir)
+    test_db_path = Path.join(data_dir, "mesh_db")
 
-    File.mkdir_p!(data_dir)
+    File.mkdir_p!(test_db_path)
     start_supervised!({Registry, keys: :duplicate, name: Dust.Mesh.Registry})
-    start_supervised!({CubDB, data_dir: data_dir, name: Dust.Mesh.Database})
+    start_supervised!({CubDB, data_dir: test_db_path, name: Dust.Mesh.Database})
     start_supervised!(Dust.Mesh.NodeRegistry)
   end
 
   defp start_shared_map! do
     start_deps!()
     start_supervised!(TestSharedMap)
+  end
+
+  defp clean_data_dir! do
+    data_dir = Application.get_env(:dust_utilities, :persist_dir)
+    test_db_path = Path.join(data_dir, "mesh_db")
+    File.rm_rf(test_db_path)
+  end
+
+  setup do
+    clean_data_dir!()
+    start_shared_map!()
+    on_exit(fn -> clean_data_dir!() end)
   end
 
   # ── child_spec/1 ────────────────────────────────────────────────────────
@@ -46,8 +55,6 @@ defmodule Dust.Mesh.SharedMapTest do
 
   describe "start_link/1" do
     test "starts a supervision tree with CRDT and GenServer children" do
-      start_shared_map!()
-
       # The supervisor should be running
       supervisor_name = :"Elixir.TestSharedMap.Supervisor"
       assert Process.whereis(supervisor_name) != nil
@@ -61,28 +68,21 @@ defmodule Dust.Mesh.SharedMapTest do
 
   describe "crdt_put/get/delete/to_map" do
     test "put and get a value" do
-      start_shared_map!()
-
       TestSharedMap.put(:key1, "value1")
       assert TestSharedMap.get(:key1) == "value1"
     end
 
     test "get returns nil for missing key" do
-      start_shared_map!()
       assert TestSharedMap.get(:nonexistent) == nil
     end
 
     test "delete removes a key" do
-      start_shared_map!()
-
       TestSharedMap.put(:key1, "value1")
       TestSharedMap.delete(:key1)
       assert TestSharedMap.get(:key1) == nil
     end
 
     test "to_map returns all entries" do
-      start_shared_map!()
-
       TestSharedMap.put(:a, 1)
       TestSharedMap.put(:b, 2)
 
@@ -92,8 +92,6 @@ defmodule Dust.Mesh.SharedMapTest do
     end
 
     test "put overwrites existing value" do
-      start_shared_map!()
-
       TestSharedMap.put(:key, "old")
       TestSharedMap.put(:key, "new")
       assert TestSharedMap.get(:key) == "new"
@@ -104,8 +102,6 @@ defmodule Dust.Mesh.SharedMapTest do
 
   describe ":node_registry_changed" do
     test "handles node_registry_changed message without error" do
-      start_shared_map!()
-
       # Simulate a node_registry_changed message
       send(TestSharedMap, {:node_registry_changed, [:peer@host]})
 
@@ -115,8 +111,6 @@ defmodule Dust.Mesh.SharedMapTest do
     end
 
     test "handles empty online_nodes list" do
-      start_shared_map!()
-
       send(TestSharedMap, {:node_registry_changed, []})
 
       :sys.get_state(TestSharedMap)
@@ -124,8 +118,6 @@ defmodule Dust.Mesh.SharedMapTest do
     end
 
     test "logs warning for unexpected message and stays alive" do
-      start_shared_map!()
-
       send(TestSharedMap, {:totally_unexpected, :data})
 
       :sys.get_state(TestSharedMap)

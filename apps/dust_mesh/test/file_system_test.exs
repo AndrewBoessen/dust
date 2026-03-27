@@ -6,26 +6,33 @@ defmodule Dust.Mesh.FileSystemTest do
   # ── Helpers ──────────────────────────────────────────────────────────────
 
   defp start_file_system! do
-    data_dir =
-      Path.join(
-        System.tmp_dir!(),
-        "dust_mesh_test_data/test_#{:os.system_time(:millisecond)}_#{:erlang.unique_integer([:positive])}"
-      )
+    data_dir = Application.get_env(:dust_utilities, :persist_dir)
+    test_db_path = Path.join(data_dir, "mesh_db")
 
-    File.mkdir_p!(data_dir)
+    File.mkdir_p!(test_db_path)
     start_supervised!({Registry, keys: :duplicate, name: Dust.Mesh.Registry})
-    start_supervised!({CubDB, data_dir: data_dir, name: Dust.Mesh.Database})
+    start_supervised!({CubDB, data_dir: test_db_path, name: Dust.Mesh.Database})
     start_supervised!(Dust.Mesh.NodeRegistry)
     start_supervised!(Dust.Mesh.FileSystem.DirMap)
     start_supervised!(Dust.Mesh.FileSystem.FileMap)
+  end
+
+  defp clean_data_dir! do
+    data_dir = Application.get_env(:dust_utilities, :persist_dir)
+    test_db_path = Path.join(data_dir, "mesh_db")
+    File.rm_rf(test_db_path)
+  end
+
+  setup do
+    clean_data_dir!()
+    start_file_system!()
+    on_exit(fn -> clean_data_dir!() end)
   end
 
   # ── mkdir/2 ──────────────────────────────────────────────────────────────
 
   describe "mkdir/2" do
     test "creates a root directory with nil parent" do
-      start_file_system!()
-
       assert {:ok, id} = FileSystem.mkdir(nil, "root")
       assert is_binary(id)
 
@@ -37,8 +44,6 @@ defmodule Dust.Mesh.FileSystemTest do
     end
 
     test "creates a child directory under a parent" do
-      start_file_system!()
-
       {:ok, parent_id} = FileSystem.mkdir(nil, "parent")
       {:ok, child_id} = FileSystem.mkdir(parent_id, "child")
 
@@ -50,13 +55,10 @@ defmodule Dust.Mesh.FileSystemTest do
     end
 
     test "returns {:error, :parent_not_found} for non-existent parent" do
-      start_file_system!()
       assert {:error, :parent_not_found} = FileSystem.mkdir("nonexistent", "child")
     end
 
     test "raises FunctionClauseError for non-binary name" do
-      start_file_system!()
-
       assert_raise FunctionClauseError, fn ->
         FileSystem.mkdir(nil, 123)
       end
@@ -67,7 +69,6 @@ defmodule Dust.Mesh.FileSystemTest do
 
   describe "get_dir/1" do
     test "returns entry for existing directory" do
-      start_file_system!()
       {:ok, id} = FileSystem.mkdir(nil, "docs")
 
       entry = FileSystem.get_dir(id)
@@ -75,7 +76,6 @@ defmodule Dust.Mesh.FileSystemTest do
     end
 
     test "returns nil for non-existent directory" do
-      start_file_system!()
       assert FileSystem.get_dir("nonexistent") == nil
     end
   end
@@ -84,8 +84,6 @@ defmodule Dust.Mesh.FileSystemTest do
 
   describe "ls/1" do
     test "lists child directories and files" do
-      start_file_system!()
-
       {:ok, root} = FileSystem.mkdir(nil, "root")
       {:ok, sub} = FileSystem.mkdir(root, "sub")
       {:ok, file} = FileSystem.put_file(root, "readme.md", %{size: 42})
@@ -102,12 +100,10 @@ defmodule Dust.Mesh.FileSystemTest do
     end
 
     test "returns {:error, :not_found} for missing directory" do
-      start_file_system!()
       assert {:error, :not_found} = FileSystem.ls("missing")
     end
 
     test "returns empty lists for directory with no children" do
-      start_file_system!()
       {:ok, id} = FileSystem.mkdir(nil, "empty")
 
       assert %{dirs: [], files: []} = FileSystem.ls(id)
@@ -118,7 +114,6 @@ defmodule Dust.Mesh.FileSystemTest do
 
   describe "rename_dir/2" do
     test "renames a directory in place" do
-      start_file_system!()
       {:ok, id} = FileSystem.mkdir(nil, "old_name")
 
       :ok = FileSystem.rename_dir(id, "new_name")
@@ -127,7 +122,6 @@ defmodule Dust.Mesh.FileSystemTest do
     end
 
     test "returns {:error, :not_found} for missing directory" do
-      start_file_system!()
       assert {:error, :not_found} = FileSystem.rename_dir("missing", "x")
     end
   end
@@ -136,7 +130,6 @@ defmodule Dust.Mesh.FileSystemTest do
 
   describe "rmdir/2" do
     test "removes an empty directory" do
-      start_file_system!()
       {:ok, parent} = FileSystem.mkdir(nil, "parent")
       {:ok, child} = FileSystem.mkdir(parent, "child")
 
@@ -148,7 +141,6 @@ defmodule Dust.Mesh.FileSystemTest do
     end
 
     test "removes a root directory with nil parent" do
-      start_file_system!()
       {:ok, id} = FileSystem.mkdir(nil, "root")
 
       assert :ok = FileSystem.rmdir(id, nil)
@@ -156,7 +148,6 @@ defmodule Dust.Mesh.FileSystemTest do
     end
 
     test "returns {:error, :not_empty} if directory has child dirs" do
-      start_file_system!()
       {:ok, parent} = FileSystem.mkdir(nil, "parent")
       {:ok, _child} = FileSystem.mkdir(parent, "child")
 
@@ -164,7 +155,6 @@ defmodule Dust.Mesh.FileSystemTest do
     end
 
     test "returns {:error, :not_empty} if directory has files" do
-      start_file_system!()
       {:ok, dir} = FileSystem.mkdir(nil, "dir")
       {:ok, _file} = FileSystem.put_file(dir, "file.txt")
 
@@ -172,7 +162,6 @@ defmodule Dust.Mesh.FileSystemTest do
     end
 
     test "returns {:error, :not_found} for missing directory" do
-      start_file_system!()
       assert {:error, :not_found} = FileSystem.rmdir("missing", nil)
     end
   end
@@ -181,7 +170,6 @@ defmodule Dust.Mesh.FileSystemTest do
 
   describe "put_file/3" do
     test "adds a file to a directory" do
-      start_file_system!()
       {:ok, dir} = FileSystem.mkdir(nil, "docs")
 
       assert {:ok, file_id} = FileSystem.put_file(dir, "notes.txt", %{size: 100})
@@ -192,7 +180,6 @@ defmodule Dust.Mesh.FileSystemTest do
     end
 
     test "automatically sets :name and :created_at in metadata" do
-      start_file_system!()
       {:ok, dir} = FileSystem.mkdir(nil, "docs")
       {:ok, file_id} = FileSystem.put_file(dir, "readme.md", %{mime: "text/plain"})
 
@@ -203,7 +190,6 @@ defmodule Dust.Mesh.FileSystemTest do
     end
 
     test "returns {:error, :dir_not_found} for non-existent directory" do
-      start_file_system!()
       assert {:error, :dir_not_found} = FileSystem.put_file("missing", "f.txt")
     end
   end
@@ -212,7 +198,6 @@ defmodule Dust.Mesh.FileSystemTest do
 
   describe "stat/1" do
     test "returns metadata with :id for existing file" do
-      start_file_system!()
       {:ok, dir} = FileSystem.mkdir(nil, "d")
       {:ok, fid} = FileSystem.put_file(dir, "f.txt", %{size: 5})
 
@@ -223,7 +208,6 @@ defmodule Dust.Mesh.FileSystemTest do
     end
 
     test "returns nil for non-existent file" do
-      start_file_system!()
       assert FileSystem.stat("missing") == nil
     end
   end
@@ -232,7 +216,6 @@ defmodule Dust.Mesh.FileSystemTest do
 
   describe "update_file/2" do
     test "merges updates into existing metadata" do
-      start_file_system!()
       {:ok, dir} = FileSystem.mkdir(nil, "d")
       {:ok, fid} = FileSystem.put_file(dir, "f.txt", %{size: 10})
 
@@ -245,7 +228,6 @@ defmodule Dust.Mesh.FileSystemTest do
     end
 
     test "returns {:error, :not_found} for missing file" do
-      start_file_system!()
       assert {:error, :not_found} = FileSystem.update_file("missing", %{size: 0})
     end
   end
@@ -254,7 +236,6 @@ defmodule Dust.Mesh.FileSystemTest do
 
   describe "mv_file/3" do
     test "moves a file between directories" do
-      start_file_system!()
       {:ok, src} = FileSystem.mkdir(nil, "src")
       {:ok, dst} = FileSystem.mkdir(nil, "dst")
       {:ok, fid} = FileSystem.put_file(src, "f.txt")
@@ -269,7 +250,6 @@ defmodule Dust.Mesh.FileSystemTest do
     end
 
     test "returns {:error, :not_found} when file does not exist" do
-      start_file_system!()
       {:ok, src} = FileSystem.mkdir(nil, "src")
       {:ok, dst} = FileSystem.mkdir(nil, "dst")
 
@@ -277,7 +257,6 @@ defmodule Dust.Mesh.FileSystemTest do
     end
 
     test "returns {:error, :not_found} when source dir does not exist" do
-      start_file_system!()
       {:ok, dir} = FileSystem.mkdir(nil, "dir")
       {:ok, fid} = FileSystem.put_file(dir, "f.txt")
 
@@ -285,7 +264,6 @@ defmodule Dust.Mesh.FileSystemTest do
     end
 
     test "returns {:error, :not_found} when dest dir does not exist" do
-      start_file_system!()
       {:ok, dir} = FileSystem.mkdir(nil, "dir")
       {:ok, fid} = FileSystem.put_file(dir, "f.txt")
 
@@ -297,7 +275,6 @@ defmodule Dust.Mesh.FileSystemTest do
 
   describe "rm_file/2" do
     test "deletes a file and removes it from its parent" do
-      start_file_system!()
       {:ok, dir} = FileSystem.mkdir(nil, "d")
       {:ok, fid} = FileSystem.put_file(dir, "f.txt")
 
@@ -310,7 +287,6 @@ defmodule Dust.Mesh.FileSystemTest do
     end
 
     test "returns {:error, :not_found} for missing file" do
-      start_file_system!()
       {:ok, dir} = FileSystem.mkdir(nil, "d")
 
       assert {:error, :not_found} = FileSystem.rm_file("missing", dir)
@@ -321,7 +297,6 @@ defmodule Dust.Mesh.FileSystemTest do
 
   describe "all_dirs/0 and all_files/0" do
     test "returns directory map containing created entries" do
-      start_file_system!()
       {:ok, id} = FileSystem.mkdir(nil, "root")
 
       dirs = FileSystem.all_dirs()
@@ -330,7 +305,6 @@ defmodule Dust.Mesh.FileSystemTest do
     end
 
     test "returns file map containing created entries" do
-      start_file_system!()
       {:ok, dir} = FileSystem.mkdir(nil, "d")
       {:ok, fid} = FileSystem.put_file(dir, "f.txt", %{size: 1})
 

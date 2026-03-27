@@ -151,6 +151,7 @@ defmodule Dust.Bridge do
   @impl true
   def init(opts) do
     sidecar = Keyword.get(opts, :sidecar_path, sidecar_path())
+    root_state_dir = Keyword.get(opts, :ts_state_dir, ts_state_dir())
 
     node_prefix =
       Node.self()
@@ -161,7 +162,6 @@ defmodule Dust.Bridge do
     # Determine unique Tailscale hostname and state directory
     hostname = System.get_env("TS_HOSTNAME") || "dust-node-#{node_prefix}"
 
-    root_state_dir = Keyword.get(opts, :ts_state_dir, ts_state_dir())
     state_dir = Path.join([root_state_dir, "tsnet-state-#{node_prefix}"])
 
     port =
@@ -206,11 +206,13 @@ defmodule Dust.Bridge do
 
   defp sidecar_path do
     default_path = Path.expand("../native/tsnet_sidecar/tsnet_sidecar", __DIR__)
+
     Application.get_env(:dust_bridge, :sidecar_path, default_path)
   end
 
   defp ts_state_dir do
-    default_path = Path.expand("~/.dust")
-    Application.get_env(:dust_bridge, :ts_state_dir, default_path)
+    default_path = Path.join([System.user_home!(), ".dust", "ts_state"])
+
+    default_path
   end
 end

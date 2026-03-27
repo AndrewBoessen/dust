@@ -121,9 +121,17 @@ defmodule Dust.Bridge.Secrets do
   end
 
   defp get_secrets_path() do
+    data_dir =
+      Application.get_env(
+        :dust_utilities,
+        :persist_dir,
+        Path.join([System.user_home!(), ".dust", "ts_state"])
+      )
+
+    root_state_dir = Path.join(data_dir, "ts_state")
+
     node_prefix = Node.self() |> to_string() |> String.split("@") |> List.first() || "unknown"
-    root_dir = Application.get_env(:dust_bridge, :ts_state_dir, Path.expand("~/.dust"))
-    state_dir = Path.join([root_dir, "tsnet-state-#{node_prefix}"])
+    state_dir = Path.join(root_state_dir, "tsnet-state-#{node_prefix}")
     Path.join(state_dir, @secrets_file)
   end
 end

@@ -1,13 +1,6 @@
 import Config
 
-# Default master key file location
-config :dust_core, :key_path, Path.expand("~/.dust/master.key")
-
-# Default node fitness model db file location
-config :dust_core, :fitness_path, Path.expand("~/.dust/fitness_models")
-
-# Default mesh shared map db file location
-config :dust_mesh, :data_dir, Path.expand("~/.dust/dust_mesh_db")
-
-# Default ts state directory
-config :dust_bridge, :ts_state_dir, Path.expand("~/.dust")
+if config_env() == :dev do
+  # Dust persist file root directory
+  config :dust_utilities, :persist_dir, Path.join(File.cwd!(), "dust_dev")
+end

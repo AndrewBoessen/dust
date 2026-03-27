@@ -14,11 +14,14 @@ defmodule Dust.Core.UnpackerTest do
     end
 
     _ = stop_supervised(Dust.Core.KeyStore)
-    key_path = Path.join(@tmp_dir, "dust_unpacker_test_#{System.unique_integer([:positive])}.key")
-    start_supervised!({Dust.Core.KeyStore, [key_path: key_path, enable_bridge: false]})
+
+    data_dir = Application.get_env(:dust_utilities, :persist_dir)
+    key_path = Path.join(data_dir, "master.key")
+
+    File.rm(key_path)
+    start_supervised!({Dust.Core.KeyStore, [key_path: key_path]})
     :ok = Dust.Core.KeyStore.unlock("test_password")
     on_exit(fn -> File.rm(key_path) end)
-    :ok
   end
 
   # ── Helpers ─────────────────────────────────────────────────────────────

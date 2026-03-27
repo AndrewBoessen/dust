@@ -94,16 +94,14 @@ defmodule Dust.Core.KeyStore do
 
   @impl true
   def init(opts) do
-    key_path = Keyword.get(opts, :key_path, default_key_path())
-    enable_bridge = Keyword.get(opts, :enable_bridge, true)
+    key_path = Keyword.get(opts, :key_path, key_path())
 
     {:ok,
      %{
        key: nil,
        password: nil,
        status: :locked,
-       key_path: key_path,
-       enable_bridge: enable_bridge
+       key_path: key_path
      }}
   end
 
@@ -123,7 +121,7 @@ defmodule Dust.Core.KeyStore do
 
           plaintext ->
             Logger.info("KeyStore: unlocked master key from #{key_path}")
-            serve_secrets(plaintext, state)
+            serve_secrets(plaintext)
             {:reply, :ok, %{state | key: plaintext, password: password, status: :ready}}
         end
 
@@ -158,7 +156,7 @@ defmodule Dust.Core.KeyStore do
         case write_key_to_disk(key, key_path, password) do
           :ok ->
             Logger.info("KeyStore: master key persisted at #{key_path}")
-            serve_secrets(key, state)
+            serve_secrets(key)
             {:reply, :ok, %{state | key: key, password: password, status: :ready}}
 
           {:error, reason} ->
@@ -205,7 +203,7 @@ defmodule Dust.Core.KeyStore do
   end
 
   # Helper to start serving the key via bridge
-  defp serve_secrets(key, %{enable_bridge: true}) do
+  defp serve_secrets(key) do
     try do
       otp_cookie = Node.get_cookie() |> to_string()
       key_b64 = Base.encode64(key)
@@ -215,8 +213,6 @@ defmodule Dust.Core.KeyStore do
         Logger.warning("KeyStore: Dust.Bridge is not available to serve secrets: #{inspect(err)}")
     end
   end
-
-  defp serve_secrets(_key, _state), do: :ok
 
   # ── Disk persistence (encrypted at rest) ────────────────────────────────
 
@@ -256,7 +252,10 @@ defmodule Dust.Core.KeyStore do
     end
   end
 
-  defp default_key_path do
-    Application.get_env(:dust_core, :key_path, Path.expand("~/.dust/master.key"))
+  # ── Default key path ───────────────────────────────────────────────
+  defp key_path do
+    default_path = Path.join([System.user_home!(), ".dust", "master.key"])
+
+    default_path
   end
 end

@@ -8,15 +8,12 @@ defmodule Dust.Mesh.ManifestTest do
   # ── Helpers ──────────────────────────────────────────────────────────────
 
   defp start_manifest! do
-    data_dir =
-      Path.join(
-        System.tmp_dir!(),
-        "dust_mesh_test_data/test_#{:os.system_time(:millisecond)}_#{:erlang.unique_integer([:positive])}"
-      )
+    data_dir = Application.get_env(:dust_utilities, :persist_dir)
+    test_db_path = Path.join(data_dir, "mesh_db")
 
-    File.mkdir_p!(data_dir)
+    File.mkdir_p!(test_db_path)
     start_supervised!({Registry, keys: :duplicate, name: Dust.Mesh.Registry})
-    start_supervised!({CubDB, data_dir: data_dir, name: Dust.Mesh.Database})
+    start_supervised!({CubDB, data_dir: test_db_path, name: Dust.Mesh.Database})
     start_supervised!(Dust.Mesh.NodeRegistry)
     start_supervised!(FileIndex)
     start_supervised!(ChunkIndex)
@@ -37,12 +34,22 @@ defmodule Dust.Mesh.ManifestTest do
     %FileMeta{encrypted_file_key: fake_encrypted_key()}
   end
 
+  defp clean_data_dir! do
+    data_dir = Application.get_env(:dust_utilities, :persist_dir)
+    test_db_path = Path.join(data_dir, "mesh_db")
+    File.rm_rf(test_db_path)
+  end
+
+  setup do
+    clean_data_dir!()
+    start_manifest!()
+    on_exit(fn -> clean_data_dir!() end)
+  end
+
   # ── store_file_stream/3 ──────────────────────────────────────────────────
 
   describe "store_file_stream/3" do
     test "indexes a file and its chunks" do
-      start_manifest!()
-
       file_meta = make_file_meta()
       c1 = make_chunk_meta()
       c2 = make_chunk_meta()
@@ -55,8 +62,6 @@ defmodule Dust.Mesh.ManifestTest do
     end
 
     test "chunk IDs correspond to their content hash" do
-      start_manifest!()
-
       c1 = make_chunk_meta()
       c2 = make_chunk_meta()
       file_meta = make_file_meta()
@@ -68,8 +73,6 @@ defmodule Dust.Mesh.ManifestTest do
     end
 
     test "each chunk is stored in the ChunkIndex" do
-      start_manifest!()
-
       c1 = make_chunk_meta(size: 100)
       file_meta = make_file_meta()
 
@@ -82,8 +85,6 @@ defmodule Dust.Mesh.ManifestTest do
     end
 
     test "handles empty chunk stream" do
-      start_manifest!()
-
       file_meta = make_file_meta()
       assert :ok = Manifest.store_file_stream("empty", file_meta, [])
 
@@ -96,8 +97,6 @@ defmodule Dust.Mesh.ManifestTest do
 
   describe "remove_file/1" do
     test "removes a file and its chunks from both indices" do
-      start_manifest!()
-
       c1 = make_chunk_meta()
       file_meta = make_file_meta()
 
@@ -109,7 +108,6 @@ defmodule Dust.Mesh.ManifestTest do
     end
 
     test "returns {:error, :not_found} for missing file" do
-      start_manifest!()
       assert {:error, :not_found} = Manifest.remove_file("nonexistent")
     end
   end
@@ -118,8 +116,6 @@ defmodule Dust.Mesh.ManifestTest do
 
   describe "ChunkIndex ref counting" do
     test "increments ref_count on duplicate put" do
-      start_manifest!()
-
       key = fake_encrypted_key()
       entry = %{hash: "abc", size: 10, ref_count: 1}
 
@@ -131,8 +127,6 @@ defmodule Dust.Mesh.ManifestTest do
     end
 
     test "delete decrements ref_count when > 1" do
-      start_manifest!()
-
       key = fake_encrypted_key()
       entry = %{hash: "abc", size: 10, ref_count: 1}
 
@@ -145,8 +139,6 @@ defmodule Dust.Mesh.ManifestTest do
     end
 
     test "delete removes entry when ref_count reaches zero" do
-      start_manifest!()
-
       key = fake_encrypted_key()
       entry = %{hash: "abc", size: 10, ref_count: 1}
 
@@ -156,7 +148,6 @@ defmodule Dust.Mesh.ManifestTest do
     end
 
     test "delete no-ops for missing key" do
-      start_manifest!()
       assert :ok = ChunkIndex.delete("nonexistent")
     end
   end
@@ -165,8 +156,6 @@ defmodule Dust.Mesh.ManifestTest do
 
   describe "FileIndex" do
     test "put, get, delete, and all" do
-      start_manifest!()
-
       entry = %{encrypted_file_key: fake_encrypted_key(), chunks: ["a", "b"]}
       FileIndex.put("f1", entry)
 
@@ -178,7 +167,6 @@ defmodule Dust.Mesh.ManifestTest do
     end
 
     test "get returns nil for missing key" do
-      start_manifest!()
       assert FileIndex.get("missing") == nil
     end
   end
@@ -187,16 +175,12 @@ defmodule Dust.Mesh.ManifestTest do
 
   describe "input validation" do
     test "store_file_stream raises FunctionClauseError for non-binary uuid" do
-      start_manifest!()
-
       assert_raise FunctionClauseError, fn ->
         Manifest.store_file_stream(123, make_file_meta(), [])
       end
     end
 
     test "remove_file raises FunctionClauseError for non-binary uuid" do
-      start_manifest!()
-
       assert_raise FunctionClauseError, fn ->
         Manifest.remove_file(nil)
       end
@@ -207,8 +191,6 @@ defmodule Dust.Mesh.ManifestTest do
 
   describe "ShardMap" do
     test "put and get_shards" do
-      start_manifest!()
-
       assert :ok = ShardMap.put("chunk-abc", 0, :"dust@node-a")
       assert :ok = ShardMap.put("chunk-abc", 1, :"dust@node-b")
       assert :ok = ShardMap.put("chunk-abc", 2, :"dust@node-c")
@@ -221,13 +203,10 @@ defmodule Dust.Mesh.ManifestTest do
     end
 
     test "get_shards returns empty map for unknown chunk" do
-      start_manifest!()
       assert ShardMap.get_shards("nonexistent") == %{}
     end
 
     test "get_shards does not return entries from other chunks" do
-      start_manifest!()
-
       ShardMap.put("chunk-abc", 0, :"dust@node-a")
       ShardMap.put("chunk-def", 0, :"dust@node-b")
 
@@ -237,8 +216,6 @@ defmodule Dust.Mesh.ManifestTest do
     end
 
     test "put adds multiple nodes to same shard" do
-      start_manifest!()
-
       ShardMap.put("chunk-abc", 0, :"dust@node-a")
       ShardMap.put("chunk-abc", 0, :"dust@node-b")
 
@@ -249,8 +226,6 @@ defmodule Dust.Mesh.ManifestTest do
     end
 
     test "remove_node removes a node but keeps others" do
-      start_manifest!()
-
       ShardMap.put("chunk-abc", 0, :"dust@node-a")
       ShardMap.put("chunk-abc", 0, :"dust@node-b")
 
@@ -262,21 +237,16 @@ defmodule Dust.Mesh.ManifestTest do
     end
 
     test "remove_node deletes entry when last node removed" do
-      start_manifest!()
-
       ShardMap.put("chunk-abc", 0, :"dust@node-a")
       assert :ok = ShardMap.remove_node("chunk-abc", 0, :"dust@node-a")
       assert ShardMap.get_shards("chunk-abc") == %{}
     end
 
     test "remove_node no-ops for nonexistent entry" do
-      start_manifest!()
       assert :ok = ShardMap.remove_node("chunk-abc", 0, :"dust@node-a")
     end
 
     test "delete removes a single shard" do
-      start_manifest!()
-
       ShardMap.put("chunk-abc", 0, :"dust@node-a")
       ShardMap.put("chunk-abc", 1, :"dust@node-b")
 
@@ -288,8 +258,6 @@ defmodule Dust.Mesh.ManifestTest do
     end
 
     test "delete_shards removes all entries for a chunk" do
-      start_manifest!()
-
       for i <- 0..5 do
         ShardMap.put("chunk-abc", i, :"dust@node-#{i}")
       end
@@ -303,8 +271,6 @@ defmodule Dust.Mesh.ManifestTest do
 
   describe "Manifest shard integration" do
     test "store_shards and get_shard_locations" do
-      start_manifest!()
-
       placements = [{0, :dust@a}, {1, :dust@b}, {2, :dust@c}]
       assert :ok = Manifest.store_shards("chunk-xyz", placements)
 
@@ -315,8 +281,6 @@ defmodule Dust.Mesh.ManifestTest do
     end
 
     test "remove_file cleans up shard entries for dereferenced chunks" do
-      start_manifest!()
-
       c1 = make_chunk_meta()
       file_meta = make_file_meta()
       :ok = Manifest.store_file_stream("file-shard", file_meta, [c1])
@@ -334,8 +298,6 @@ defmodule Dust.Mesh.ManifestTest do
     end
 
     test "remove_file preserves shard entries when chunk still referenced" do
-      start_manifest!()
-
       # Same chunk used by two files (deduplication)
       shared_hash = Base.encode16(:crypto.strong_rand_bytes(32))
       c1 = make_chunk_meta(hash: shared_hash)
