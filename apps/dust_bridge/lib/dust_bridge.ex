@@ -31,6 +31,11 @@ defmodule Dust.Bridge do
   @doc """
   Request the master key and OTP cookie from a peer node over Tailscale using a token.
 
+  This command dials a peer node's sidecar (on port 9473) using Tailscale's `tsnet`.
+  The connection is secured by Tailscale, and the token is sent to authorize the transfer.
+  If the token is valid (matches a generated invite token and hasn't expired), the peer
+  responds with the encoded master key and OTP cookie.
+
   Returns `{:ok, master_key_b64, otp_cookie}` on success.
   """
   @impl true
@@ -54,6 +59,11 @@ defmodule Dust.Bridge do
 
   @doc """
   Tell the Go sidecar to start serving the master key and OTP cookie to peers.
+
+  The sidecar will start listening for TCP connections on port 9473. Incoming connections
+  are verified using Tailscale's `WhoIs` to ensure the peer has an authenticated
+  Tailscale identity. The sidecar then expects a 32-byte token, which must match an active,
+  unexpired invite token. Upon successful validation, the secrets are sent and the token is consumed.
   """
   @impl true
   @spec serve_secrets(String.t(), String.t()) :: :ok | {:error, term()}
@@ -67,6 +77,10 @@ defmodule Dust.Bridge do
 
   @doc """
   Generates a one-time secure token and registers it with the sidecar.
+
+  The token is registered internally in the sidecar's invite map with a
+  default time-to-live (TTL, e.g., 10 minutes) before it expires.
+  It can only be used once by a joining peer to retrieve the network secrets.
   """
   @impl true
   @spec create_invite() :: {:ok, String.t()} | {:error, term()}

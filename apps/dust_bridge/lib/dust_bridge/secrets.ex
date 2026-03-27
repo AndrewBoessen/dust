@@ -1,6 +1,13 @@
 defmodule Dust.Bridge.Secrets do
   @moduledoc """
   Manages the Erlang OTP cookie distribution and caches the Master Key fetch on join.
+
+  The Secrets agent is responsible for ensuring that all nodes in the mesh
+  can communicate by securely distributing and applying the same OTP cookie.
+  During `setup/0`, if a node does not have an existing cookie (e.g. initial boot),
+  it will request it securely over an authenticated Tailscale connection using a
+  one-time invitation token, simultaneously picking up the Master Key for the
+  shared cluster keystore.
   """
   use Agent
   require Logger
@@ -29,6 +36,19 @@ defmodule Dust.Bridge.Secrets do
     Agent.update(__MODULE__, fn _ -> master_key_b64 end)
   end
 
+  @doc """
+  Initializes the node's secrets at startup.
+
+  1. Checks if an OTP cookie already exists locally (in the TS state dir).
+  2. If it exists, it loads and applies the cookie.
+  3. If missing, and `JOIN_IP` / `JOIN_TOKEN` environments are provided, it initiates a secure
+     join process over Tailscale. The token is sent to the peer, and the secrets (OTP cookie
+     and Master Key) are retrieved.
+  4. If neither condition is met, it assumes it is the first node (genesis) and creates a
+     new securely randomized OTP cookie.
+
+  It caches the Master Key (if retrieved) so the rest of the app can pick it up.
+  """
   def setup() do
     secrets_path = get_secrets_path()
 
