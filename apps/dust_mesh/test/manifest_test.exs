@@ -9,7 +9,10 @@ defmodule Dust.Mesh.ManifestTest do
 
   defp start_manifest! do
     data_dir =
-      "/tmp/dust_mesh_test_data/test_#{:os.system_time(:millisecond)}_#{:erlang.unique_integer([:positive])}"
+      Path.join(
+        System.tmp_dir!(),
+        "dust_mesh_test_data/test_#{:os.system_time(:millisecond)}_#{:erlang.unique_integer([:positive])}"
+      )
 
     File.mkdir_p!(data_dir)
     start_supervised!({Registry, keys: :duplicate, name: Dust.Mesh.Registry})

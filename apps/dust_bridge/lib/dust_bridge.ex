@@ -86,6 +86,7 @@ defmodule Dust.Bridge do
   @spec create_invite() :: {:ok, String.t()} | {:error, term()}
   def create_invite() do
     token = :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
+
     case send_command("INVITE_CREATE #{token}") do
       {:ok, <<"OK:", _::binary>>} -> {:ok, token}
       {:ok, <<"ERR: ", reason::binary>>} -> {:error, reason}
@@ -160,9 +161,8 @@ defmodule Dust.Bridge do
     # Determine unique Tailscale hostname and state directory
     hostname = System.get_env("TS_HOSTNAME") || "dust-node-#{node_prefix}"
 
-    home_dir = System.user_home!()
-    default_state_dir = Path.join([home_dir, ".dust", "tsnet-state-#{node_prefix}"])
-    state_dir = System.get_env("TS_STATE_DIR") || default_state_dir
+    root_state_dir = Keyword.get(opts, :ts_state_dir, ts_state_dir())
+    state_dir = Path.join([root_state_dir, "tsnet-state-#{node_prefix}"])
 
     port =
       Port.open({:spawn_executable, sidecar}, [
@@ -207,5 +207,10 @@ defmodule Dust.Bridge do
   defp sidecar_path do
     default_path = Path.expand("../native/tsnet_sidecar/tsnet_sidecar", __DIR__)
     Application.get_env(:dust_bridge, :sidecar_path, default_path)
+  end
+
+  defp ts_state_dir do
+    default_path = Path.expand("~/.dust")
+    Application.get_env(:dust_bridge, :ts_state_dir, default_path)
   end
 end

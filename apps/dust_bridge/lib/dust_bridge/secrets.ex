@@ -63,7 +63,10 @@ defmodule Dust.Bridge.Secrets do
         Logger.info("Bridge Secrets: Attempting to join mesh via #{join_ip}...")
         join_mesh(join_ip, join_token, secrets_path)
       else
-        Logger.info("Bridge Secrets: No secrets found and no join config. Generating genesis OTP cookie...")
+        Logger.info(
+          "Bridge Secrets: No secrets found and no join config. Generating genesis OTP cookie..."
+        )
+
         generate_genesis_cookie(secrets_path)
       end
     end
@@ -89,7 +92,9 @@ defmodule Dust.Bridge.Secrets do
         store_fetched_master_key(master_key_b64)
 
       {:error, reason} ->
-        Logger.error("Bridge Secrets: Failed to join mesh: #{inspect(reason)}. Continuing without secrets.")
+        Logger.error(
+          "Bridge Secrets: Failed to join mesh: #{inspect(reason)}. Continuing without secrets."
+        )
     end
   end
 
@@ -117,9 +122,8 @@ defmodule Dust.Bridge.Secrets do
 
   defp get_secrets_path() do
     node_prefix = Node.self() |> to_string() |> String.split("@") |> List.first() || "unknown"
-    home_dir = System.user_home!()
-    default_state_dir = Path.join([home_dir, ".dust", "tsnet-state-#{node_prefix}"])
-    state_dir = System.get_env("TS_STATE_DIR") || default_state_dir
+    root_dir = Application.get_env(:dust_bridge, :ts_state_dir, Path.expand("~/.dust"))
+    state_dir = Path.join([root_dir, "tsnet-state-#{node_prefix}"])
     Path.join(state_dir, @secrets_file)
   end
 end

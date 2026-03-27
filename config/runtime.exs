@@ -8,3 +8,6 @@ config :dust_core, :fitness_path, Path.expand("~/.dust/fitness_models")
 
 # Default mesh shared map db file location
 config :dust_mesh, :data_dir, Path.expand("~/.dust/dust_mesh_db")
+
+# Default ts state directory
+config :dust_bridge, :ts_state_dir, Path.expand("~/.dust")
