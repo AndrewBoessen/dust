@@ -13,8 +13,6 @@ defmodule Dust.Bridge do
 
   require Logger
 
-  @sidecar_path "native/tsnet_sidecar/tsnet_sidecar"
-
   # ── Public API ──────────────────────────────────────────────────────────
 
   @spec start_link(keyword()) :: GenServer.on_start()
@@ -31,16 +29,17 @@ defmodule Dust.Bridge do
   end
 
   @doc """
-  Request the master key from a peer node over Tailscale.
+  Request the master key and OTP cookie from a peer node over Tailscale using a token.
 
-  Returns `{:ok, <<key::binary-32>>}` on success.
+  Returns `{:ok, master_key_b64, otp_cookie}` on success.
   """
   @impl true
-  @spec request_key(String.t()) :: {:ok, binary()} | {:error, term()}
-  def request_key(peer_address) do
-    case send_command("KEY_REQUEST #{peer_address}", 30_000) do
-      {:ok, <<"OK:", key::binary-32>>} ->
-        {:ok, key}
+  @spec join(String.t(), String.t()) :: {:ok, String.t(), String.t()} | {:error, term()}
+  def join(peer_address, token) do
+    case send_command("JOIN #{peer_address} #{token}", 30_000) do
+      {:ok, <<"OK:", secrets::binary>>} ->
+        [master_key, otp_cookie] = String.split(secrets, ":", parts: 2)
+        {:ok, master_key, otp_cookie}
 
       {:ok, <<"ERR: ", reason::binary>>} ->
         {:error, reason}
@@ -54,14 +53,78 @@ defmodule Dust.Bridge do
   end
 
   @doc """
-  Tell the Go sidecar to start serving the master key to peers.
-
-  The key is sent as raw bytes in the command payload.
+  Tell the Go sidecar to start serving the master key and OTP cookie to peers.
   """
   @impl true
-  @spec serve_key(binary()) :: :ok | {:error, term()}
-  def serve_key(key) when byte_size(key) == 32 do
-    case send_command("KEY_SERVE " <> key) do
+  @spec serve_secrets(String.t(), String.t()) :: :ok | {:error, term()}
+  def serve_secrets(master_key_b64, otp_cookie) do
+    case send_command("SERVE_SECRETS #{master_key_b64}:#{otp_cookie}") do
+      {:ok, <<"OK:", _::binary>>} -> :ok
+      {:ok, <<"ERR: ", reason::binary>>} -> {:error, reason}
+      error -> error
+    end
+  end
+
+  @doc """
+  Generates a one-time secure token and registers it with the sidecar.
+  """
+  @impl true
+  @spec create_invite() :: {:ok, String.t()} | {:error, term()}
+  def create_invite() do
+    token = :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
+    case send_command("INVITE_CREATE #{token}") do
+      {:ok, <<"OK:", _::binary>>} -> {:ok, token}
+      {:ok, <<"ERR: ", reason::binary>>} -> {:error, reason}
+      error -> error
+    end
+  end
+
+  @doc """
+  Gets all peer Tailscale IPs from the tsnet sidecar.
+  """
+  @impl true
+  @spec get_peers() :: {:ok, [String.t()]} | {:error, term()}
+  def get_peers() do
+    case send_command("PEERS") do
+      {:ok, <<"OK:", ips::binary>>} ->
+        ips_list = String.split(ips, ",", trim: true)
+        {:ok, ips_list}
+
+      {:ok, <<"ERR: ", reason::binary>>} ->
+        {:error, reason}
+
+      error ->
+        error
+    end
+  end
+
+  @doc """
+  Asks the go sidecar to proxy a connection to a target over Tailscale.
+  Returns the local port listening for the proxied connection.
+  """
+  @impl true
+  @spec proxy(String.t(), integer()) :: {:ok, integer()} | {:error, term()}
+  def proxy(target_ip, target_port) do
+    case send_command("PROXY #{target_ip}:#{target_port}") do
+      {:ok, <<"OK:", local_port_str::binary>>} ->
+        {port, _} = Integer.parse(local_port_str)
+        {:ok, port}
+
+      {:ok, <<"ERR: ", reason::binary>>} ->
+        {:error, reason}
+
+      error ->
+        error
+    end
+  end
+
+  @doc """
+  Asks the go sidecar to expose a local port on the `tsnet` Tailscale IP.
+  """
+  @impl true
+  @spec expose(integer()) :: :ok | {:error, term()}
+  def expose(port) do
+    case send_command("EXPOSE #{port}") do
       {:ok, <<"OK:", _::binary>>} -> :ok
       {:ok, <<"ERR: ", reason::binary>>} -> {:error, reason}
       error -> error
@@ -74,11 +137,28 @@ defmodule Dust.Bridge do
   def init(opts) do
     sidecar = Keyword.get(opts, :sidecar_path, sidecar_path())
 
+    node_prefix =
+      Node.self()
+      |> to_string()
+      |> String.split("@")
+      |> List.first()
+
+    # Determine unique Tailscale hostname and state directory
+    hostname = System.get_env("TS_HOSTNAME") || "dust-node-#{node_prefix}"
+
+    home_dir = System.user_home!()
+    default_state_dir = Path.join([home_dir, ".dust", "tsnet-state-#{node_prefix}"])
+    state_dir = System.get_env("TS_STATE_DIR") || default_state_dir
+
     port =
       Port.open({:spawn_executable, sidecar}, [
         :binary,
         :exit_status,
-        {:packet, 4}
+        {:packet, 4},
+        env: [
+          {~c"TS_HOSTNAME", to_charlist(hostname)},
+          {~c"TS_STATE_DIR", to_charlist(state_dir)}
+        ]
       ])
 
     {:ok, %{port: port}}
@@ -111,6 +191,7 @@ defmodule Dust.Bridge do
   # ── Private ─────────────────────────────────────────────────────────────
 
   defp sidecar_path do
-    Application.get_env(:dust_bridge, :sidecar_path, @sidecar_path)
+    default_path = Path.expand("../native/tsnet_sidecar/tsnet_sidecar", __DIR__)
+    Application.get_env(:dust_bridge, :sidecar_path, default_path)
   end
 end

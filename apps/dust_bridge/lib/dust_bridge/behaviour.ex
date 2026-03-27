@@ -6,6 +6,10 @@ defmodule Dust.Bridge.Behaviour do
   swapped for a mock in tests.
   """
 
-  @callback request_key(String.t()) :: {:ok, binary()} | {:error, term()}
-  @callback serve_key(binary()) :: :ok | {:error, term()}
+  @callback join(String.t(), String.t()) :: {:ok, String.t(), String.t()} | {:error, term()}
+  @callback serve_secrets(String.t(), String.t()) :: :ok | {:error, term()}
+  @callback create_invite() :: {:ok, String.t()} | {:error, term()}
+  @callback get_peers() :: {:ok, [String.t()]} | {:error, term()}
+  @callback proxy(String.t(), integer()) :: {:ok, integer()} | {:error, term()}
+  @callback expose(integer()) :: :ok | {:error, term()}
 end

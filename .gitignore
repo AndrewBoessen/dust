@@ -21,3 +21,7 @@ erl_crash.dump
 
 # asdf version config
 .tool-versions
+
+# Go sidecar compiled binary
+apps/dust_bridge/native/tsnet_sidecar/tsnet_sidecar
+tsnet-state*

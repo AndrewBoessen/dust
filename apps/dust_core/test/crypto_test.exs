@@ -126,7 +126,7 @@ defmodule Dust.Core.CryptoTest do
       path =
         Path.join(System.tmp_dir!(), "dust_crypto_test_#{System.unique_integer([:positive])}.key")
 
-      start_supervised!({Dust.Core.KeyStore, [key_path: path]})
+      start_supervised!({Dust.Core.KeyStore, [key_path: path, enable_bridge: false]})
       :ok = Dust.Core.KeyStore.unlock("test_password")
       on_exit(fn -> File.rm(path) end)
       :ok
