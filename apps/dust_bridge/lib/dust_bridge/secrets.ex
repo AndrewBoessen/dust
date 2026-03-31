@@ -13,6 +13,7 @@ defmodule Dust.Bridge.Secrets do
   require Logger
 
   @secrets_file "secrets.json"
+  @state_dir "ts_state"
 
   def start_link(_) do
     Agent.start_link(fn -> nil end, name: __MODULE__)
@@ -125,10 +126,10 @@ defmodule Dust.Bridge.Secrets do
       Application.get_env(
         :dust_utilities,
         :persist_dir,
-        Path.join([System.user_home!(), ".dust", "ts_state"])
+        Path.join([System.user_home!(), ".dust"])
       )
 
-    root_state_dir = Path.join(data_dir, "ts_state")
+    root_state_dir = Path.join(data_dir, @state_dir)
 
     node_prefix = Node.self() |> to_string() |> String.split("@") |> List.first() || "unknown"
     state_dir = Path.join(root_state_dir, "tsnet-state-#{node_prefix}")

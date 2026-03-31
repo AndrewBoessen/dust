@@ -207,11 +207,15 @@ defmodule Dust.Core.KeyStore do
     try do
       otp_cookie = Node.get_cookie() |> to_string()
       key_b64 = Base.encode64(key)
-      Dust.Bridge.serve_secrets(key_b64, otp_cookie)
+      bridge_module().serve_secrets(key_b64, otp_cookie)
     rescue
       err ->
-        Logger.warning("KeyStore: Dust.Bridge is not available to serve secrets: #{inspect(err)}")
+        Logger.warning("KeyStore: #{bridge_module()} is not available to serve secrets: #{inspect(err)}")
     end
+  end
+
+  defp bridge_module do
+    Application.get_env(:dust_bridge, :bridge_module, Dust.Bridge)
   end
 
   # ── Disk persistence (encrypted at rest) ────────────────────────────────

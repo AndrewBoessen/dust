@@ -1,6 +1,10 @@
 defmodule Dust.Core.KeyStoreTest do
   use ExUnit.Case, async: false
 
+  import Mox
+
+  setup :verify_on_exit!
+
   alias Dust.Core.KeyStore
 
   @test_password "test_password_123"
@@ -11,7 +15,9 @@ defmodule Dust.Core.KeyStoreTest do
     data_dir = Application.get_env(:dust_utilities, :persist_dir)
     key_path = Path.join(data_dir, "master.key")
 
-    start_supervised!({KeyStore, [key_path: key_path]})
+    pid = start_supervised!({KeyStore, [key_path: key_path]})
+    Mox.allow(Dust.Bridge.Mock, self(), pid)
+    pid
   end
 
   defp clean_data_dir! do
@@ -46,6 +52,7 @@ defmodule Dust.Core.KeyStoreTest do
 
   describe "unlock/1" do
     test "generates a key on first unlock when no file exists" do
+      expect(Dust.Bridge.Mock, :serve_secrets, fn _, _ -> :ok end)
       assert :ok = KeyStore.unlock(@test_password)
       assert {:ok, key} = KeyStore.get_key()
       assert byte_size(key) == 32
@@ -53,6 +60,7 @@ defmodule Dust.Core.KeyStoreTest do
     end
 
     test "persists the key to disk on first unlock" do
+      expect(Dust.Bridge.Mock, :serve_secrets, fn _, _ -> :ok end)
       data_dir = Application.get_env(:dust_utilities, :persist_dir)
       key_path = Path.join(data_dir, "master.key")
 
@@ -65,15 +73,13 @@ defmodule Dust.Core.KeyStoreTest do
     end
 
     test "decrypts existing key on unlock after restart" do
+      expect(Dust.Bridge.Mock, :serve_secrets, fn _, _ -> :ok end)
       :ok = KeyStore.unlock(@test_password)
       {:ok, original_key} = KeyStore.get_key()
 
-      data_dir = Application.get_env(:dust_utilities, :persist_dir)
-      key_path = Path.join(data_dir, "master.key")
-
       # Restart with same path
       stop_supervised!(KeyStore)
-      start_supervised!({KeyStore, [key_path: key_path]})
+      start_key_store!()
 
       # Must unlock again
       assert {:error, :locked} = KeyStore.get_key()
@@ -85,12 +91,9 @@ defmodule Dust.Core.KeyStoreTest do
     test "returns error for wrong password" do
       :ok = KeyStore.unlock(@test_password)
 
-      data_dir = Application.get_env(:dust_utilities, :persist_dir)
-      key_path = Path.join(data_dir, "master.key")
-
       # Restart and try wrong password
       stop_supervised!(KeyStore)
-      start_supervised!({KeyStore, [key_path: key_path]})
+      start_key_store!()
 
       assert {:error, :decrypt_failed} = KeyStore.unlock("wrong_password")
       assert {:error, :locked} = KeyStore.get_key()
@@ -149,11 +152,8 @@ defmodule Dust.Core.KeyStoreTest do
       peer_key = :crypto.strong_rand_bytes(32)
       :ok = KeyStore.set_key(peer_key)
 
-      data_dir = Application.get_env(:dust_utilities, :persist_dir)
-      key_path = Path.join(data_dir, "master.key")
-
       stop_supervised!(KeyStore)
-      start_supervised!({KeyStore, [key_path: key_path]})
+      start_key_store!()
       :ok = KeyStore.unlock(@test_password)
 
       assert {:ok, ^peer_key} = KeyStore.get_key()
