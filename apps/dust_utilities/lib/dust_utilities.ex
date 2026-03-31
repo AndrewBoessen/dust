@@ -1,18 +1,9 @@
 defmodule Dust.Utilities do
   @moduledoc """
-  Documentation for `Utilities`.
+  Shared utility modules for the Dust umbrella application.
+
+  Submodules:
+
+    * `Dust.Utilities.File` — centralized file path management for persistent data
   """
-
-  @doc """
-  Hello world.
-
-  ## Examples
-
-      iex> Dust.Utilities.hello()
-      :world
-
-  """
-  def hello do
-    :world
-  end
 end

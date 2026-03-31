@@ -2,9 +2,21 @@ defmodule Dust.Utilities.File do
   @moduledoc """
   Centralized file path management for persistent data structures.
 
-  Defines specific physical storage paths (directories and filenames)
-  so the rest of the umbrella applications can rely on a single
-  authoritative source for disk I/O destinations.
+  All persistent paths in the Dust umbrella resolve through this module.
+  The root directory defaults to `~/.dust` but is configurable via the
+  `:dust_utilities` application environment:
+
+      config :dust_utilities, persist_dir: "/custom/path"
+
+  ## Directory layout
+
+      <persist_dir>/
+      ├── master.key              # encrypted master key (Dust.Core.KeyStore)
+      ├── fitness_models/         # CubDB database for NodeEMA models
+      ├── mesh_db/                # CubDB database for mesh CRDTs
+      └── ts_state/
+          └── tsnet-state-<node>/ # per-node Tailscale tsnet state
+              └── secrets.json    # persisted OTP cookie
   """
 
   @master_key_file "master.key"
@@ -17,8 +29,17 @@ defmodule Dust.Utilities.File do
 
   @doc """
   Returns the base persistence directory.
-  Defaults to evaluating the `~/.dust` path via System.user_home!().
+
+  Reads the `:persist_dir` key from the `:dust_utilities` application
+  environment. Defaults to `~/.dust`.
+
+  ## Examples
+
+      iex> Dust.Utilities.File.persist_dir()
+      "/home/user/.dust"
+
   """
+  @spec persist_dir() :: Path.t()
   def persist_dir do
     Application.get_env(
       :dust_utilities,
@@ -27,38 +48,65 @@ defmodule Dust.Utilities.File do
     )
   end
 
-  @doc "Absolute path to the master.key file"
+  @doc """
+  Absolute path to the `master.key` file.
+
+  The file contains the network-wide master key encrypted at rest with
+  a device-bound key derived from the user's password.
+  """
+  @spec master_key_file() :: Path.t()
   def master_key_file do
     Path.join(persist_dir(), @master_key_file)
   end
 
-  @doc "Absolute path to the fitness_models directory"
+  @doc """
+  Absolute path to the `fitness_models/` directory.
+
+  Stores the CubDB database backing `Dust.Core.Fitness.ModelStore`.
+  """
+  @spec fitness_models_dir() :: Path.t()
   def fitness_models_dir do
     Path.join(persist_dir(), @fitness_model_dir)
   end
 
-  @doc "Absolute path to the mesh_db directory"
+  @doc """
+  Absolute path to the `mesh_db/` directory.
+
+  Stores the CubDB database backing the mesh layer's CRDT persistence
+  (see `Dust.Mesh.SharedMap.Storage`).
+  """
+  @spec mesh_db_dir() :: Path.t()
   def mesh_db_dir do
     Path.join(persist_dir(), @mesh_db_dir)
   end
 
   @doc """
-  Absolute path to the tsnet state directory.
-  Defaults to evaluating the node_prefix.
+  Absolute path to the tsnet state directory for the given node prefix.
+
+  The Go `tsnet_sidecar` stores its Tailscale state here. Each node in
+  a local dev cluster gets its own subdirectory keyed by `prefix`.
+
+  Defaults to a prefix derived from `Node.self()` (the part before `@`).
   """
+  @spec ts_state_dir(String.t()) :: Path.t()
   def ts_state_dir(prefix \\ node_prefix()) do
     Path.join([persist_dir(), @ts_state_root, "#{@node_ts_state_prefix}-#{prefix}"])
   end
 
   @doc """
-  Absolute path to the secrets.json file.
-  Defaults to evaluating the node_prefix.
+  Absolute path to the `secrets.json` file for the given node prefix.
+
+  Contains the persisted OTP cookie stored by `Dust.Bridge.Secrets`.
+  Defaults to a prefix derived from `Node.self()`.
   """
+  @spec secrets_file(String.t()) :: Path.t()
   def secrets_file(prefix \\ node_prefix()) do
     Path.join(ts_state_dir(prefix), @secrets_file)
   end
 
-  # Helper to identify uniqueness in dev clusters via the node name.
+  # Derives a node-unique prefix from `Node.self()` for path isolation
+  # in local dev clusters (e.g. "dust1" from :"dust1@127.0.0.1").
+  @spec node_prefix() :: String.t()
   defp node_prefix do
     Node.self()
     |> to_string()

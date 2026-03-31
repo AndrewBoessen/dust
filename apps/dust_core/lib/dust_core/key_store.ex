@@ -8,14 +8,14 @@ defmodule Dust.Core.KeyStore do
   ## Unlock flow
 
     * **Key file exists** – derives a device key from `password <> machine-id`
-      via PBKDF2, decrypts the master key, and transitions to `:ready`.
+      via Argon2id, decrypts the master key, and transitions to `:ready`.
     * **Key file missing** – generates a fresh 32-byte master key, encrypts it
       at rest with the derived device key, persists it, and transitions to `:ready`.
     * **Wrong password** – decryption fails, the store stays `:locked`.
 
   The `lock/0` function wipes the key from state and returns to `:locked`.
   The password is never stored — it is only held in memory during the
-  PBKDF2 derivation call inside `unlock/1`.
+  Argon2id derivation call inside `unlock/1`.
   """
 
   use GenServer
@@ -202,7 +202,7 @@ defmodule Dust.Core.KeyStore do
     {:reply, status == :ready, state}
   end
 
-  # Helper to start serving the key via bridge
+  @spec serve_secrets(binary()) :: :ok
   defp serve_secrets(key) do
     try do
       otp_cookie = Node.get_cookie() |> to_string()
@@ -216,12 +216,14 @@ defmodule Dust.Core.KeyStore do
     end
   end
 
+  @spec bridge_module() :: module()
   defp bridge_module do
     Application.get_env(:dust_bridge, :bridge_module, Dust.Bridge)
   end
 
   # ── Disk persistence (encrypted at rest) ────────────────────────────────
 
+  @spec write_key_to_disk(binary(), Path.t(), String.t()) :: :ok | {:error, File.posix()}
   defp write_key_to_disk(key, path, password) do
     with :ok <- File.mkdir_p(Path.dirname(path)) do
       salt = :crypto.strong_rand_bytes(@salt_size)
@@ -237,6 +239,7 @@ defmodule Dust.Core.KeyStore do
 
   # ── Device key derivation ───────────────────────────────────────────────
 
+  @spec derive_device_key(binary(), String.t()) :: binary()
   defp derive_device_key(salt, password) do
     machine_id = read_machine_id()
     secret = password <> machine_id
@@ -246,6 +249,7 @@ defmodule Dust.Core.KeyStore do
     |> Base.decode16!(case: :lower)
   end
 
+  @spec read_machine_id() :: String.t()
   defp read_machine_id do
     case File.read("/etc/machine-id") do
       {:ok, id} ->

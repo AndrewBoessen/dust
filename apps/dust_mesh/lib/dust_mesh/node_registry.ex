@@ -32,6 +32,7 @@ defmodule Dust.Mesh.NodeRegistry do
 
   # ── Public API ─────────────────────────────────────────────────────────────
 
+  @doc false
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -159,6 +160,7 @@ defmodule Dust.Mesh.NodeRegistry do
 
   # ── Private ────────────────────────────────────────────────────────────────
 
+  @spec notify(map()) :: map()
   defp notify(state) do
     online =
       state.registry
@@ -174,24 +176,30 @@ defmodule Dust.Mesh.NodeRegistry do
     state
   end
 
+  @spec put_entry(registry(), node(), node_status()) :: registry()
   defp put_entry(registry, node, status) do
     Map.put(registry, node, %{status: status, seen_at: DateTime.utc_now()})
   end
 
+  @spec announce_presence() :: :ok
   defp announce_presence() do
     Enum.each(Node.list(), fn node ->
       send({__MODULE__, node}, {:presence, Node.self()})
     end)
   end
 
+  @spec request_sync_from_peers() :: :ok
   defp request_sync_from_peers() do
     Enum.each(Node.list(), &request_sync/1)
   end
 
+  @spec request_sync(node()) :: :ok
   defp request_sync(node) do
     send({__MODULE__, node}, {:sync_request, Node.self()})
+    :ok
   end
 
+  @spec merge_registries(registry(), registry()) :: registry()
   defp merge_registries(ours, theirs) do
     Map.merge(ours, theirs, fn _node, our_entry, their_entry ->
       case {our_entry.status, their_entry.status} do

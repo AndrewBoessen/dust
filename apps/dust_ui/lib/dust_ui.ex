@@ -1,18 +1,9 @@
 defmodule Dust.Ui do
   @moduledoc """
-  Documentation for `Ui`.
+  User interface layer for the Dust network.
+
+  Provides the front-end through which users interact with the distributed
+  file system — managing files, unlocking the key store, and monitoring
+  node status.
   """
-
-  @doc """
-  Hello world.
-
-  ## Examples
-
-      iex> Dust.Ui.hello()
-      :world
-
-  """
-  def hello do
-    :world
-  end
 end

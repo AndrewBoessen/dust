@@ -18,15 +18,19 @@ defmodule Dust.Mesh.FileSystem.DirMap do
           created_at: DateTime.t()
         }
 
+  @doc "Stores a directory entry under the given `id`."
   @spec put(String.t(), map() | t()) :: :ok | {:error, :crdt_unavailable}
   def put(id, entry), do: crdt_put(id, entry)
 
+  @doc "Returns the directory entry for `id`, or `nil` if not found."
   @spec get(String.t()) :: map() | nil
   def get(id), do: crdt_get(id)
 
+  @doc "Deletes the directory entry for `id`."
   @spec delete(String.t()) :: :ok | {:error, :crdt_unavailable}
   def delete(id), do: crdt_delete(id)
 
+  @doc "Returns all directory entries as a plain map."
   @spec all() :: map()
   def all, do: crdt_to_map()
 end
@@ -53,15 +57,19 @@ defmodule Dust.Mesh.FileSystem.FileMap do
           created_at: DateTime.t()
         }
 
+  @doc "Stores file metadata under the given `id`."
   @spec put(String.t(), map() | t()) :: :ok | {:error, :crdt_unavailable}
   def put(id, metadata), do: crdt_put(id, metadata)
 
+  @doc "Returns file metadata for `id`, or `nil` if not found."
   @spec get(String.t()) :: map() | nil
   def get(id), do: crdt_get(id)
 
+  @doc "Deletes the file metadata for `id`."
   @spec delete(String.t()) :: :ok | {:error, :crdt_unavailable}
   def delete(id), do: crdt_delete(id)
 
+  @doc "Returns all file metadata as a plain map."
   @spec all() :: map()
   def all, do: crdt_to_map()
 end
@@ -376,7 +384,7 @@ defmodule Dust.Mesh.FileSystem do
     end
   end
 
-  @doc false
+  # Best-effort directory update that logs and swallows :not_found (TOCTOU race).
   @spec update_dir!(uuid(), (dir_entry() -> dir_entry())) :: :ok
   defp update_dir!(dir_id, fun) do
     case update_dir(dir_id, fun) do

@@ -50,6 +50,12 @@ defmodule Dust.Core.Crypto do
 
   # ── Encryption / Decryption ────────────────────────────────────────────
 
+  @doc """
+  Encrypts `plain_binary` with the given 256-bit `key` using AES-256-GCM.
+
+  Returns a single binary: `<<IV::128, Tag::128, Ciphertext::binary>>`.
+  A fresh random IV is generated per call.
+  """
   @spec encrypt_with_key(binary(), master_key() | file_key() | chunk_key()) :: binary()
   def encrypt_with_key(plain_binary, key) do
     iv = :crypto.strong_rand_bytes(16)
@@ -60,6 +66,13 @@ defmodule Dust.Core.Crypto do
     iv <> tag <> ciphertext
   end
 
+  @doc """
+  Decrypts a payload produced by `encrypt_with_key/2`.
+
+  Expects `payload` to be at least 32 bytes (`<<IV::128, Tag::128, ...>>`).
+  Returns the plaintext binary on success, or `{:error, :integrity_check_failed}`
+  if the key is wrong or the data has been tampered with.
+  """
   @spec decrypt_with_key(binary(), master_key() | file_key() | chunk_key()) ::
           binary() | {:error, :integrity_check_failed}
   def decrypt_with_key(payload, key) when byte_size(payload) >= 32 do
@@ -75,11 +88,26 @@ defmodule Dust.Core.Crypto do
 
   # ── Master-key helpers ─────────────────────────────────────────────────
 
+  @doc """
+  Encrypts `plaintext` using the network-wide master key.
+
+  Convenience wrapper that fetches the master key from
+  `Dust.Core.KeyStore` and delegates to `encrypt_with_key/2`.
+
+  Raises if the KeyStore is locked.
+  """
   @spec encrypt_with_master(binary()) :: binary()
   def encrypt_with_master(plaintext) do
     encrypt_with_key(plaintext, get_master_key!())
   end
 
+  @doc """
+  Decrypts the encrypted file key inside a `FileMeta` struct.
+
+  Uses the master key to unwrap the file key. Returns `{:ok, file_key}` or
+  `{:error, :integrity_check_failed}` if the master key is wrong or the
+  wrapped key has been tampered with.
+  """
   @spec decrypt_file_key(FileMeta.t()) :: {:ok, file_key()} | {:error, :integrity_check_failed}
   def decrypt_file_key(%FileMeta{encrypted_file_key: wrapped_key}) do
     case decrypt_with_key(wrapped_key, get_master_key!()) do

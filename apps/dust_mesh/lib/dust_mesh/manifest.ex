@@ -231,6 +231,7 @@ defmodule Dust.Mesh.Manifest do
 
   @type file_index :: FileIndex.t()
   @type chunk_index :: ChunkIndex.t()
+  @type shard_map :: ShardMap.t()
 
   # ── Manifest API ───────────────────────────────────────────────────────────
 

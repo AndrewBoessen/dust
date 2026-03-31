@@ -12,10 +12,13 @@ defmodule Dust.Core.ErasureCoding do
   that populate the parity shards.
   """
 
+  # Default number of data shards
   @default_k 4
+  # Default number of parity shards
   @default_m 2
 
-  # Number of byte positions to batch per parallel task
+  # Byte positions processed per parallel task during encode/decode.
+  # Larger values reduce task overhead; smaller values improve parallelism.
   @batch_size 8192
 
   # ── Public API ──────────────────────────────────────────────────────────

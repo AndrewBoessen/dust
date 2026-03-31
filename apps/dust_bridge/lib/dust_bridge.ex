@@ -1,10 +1,14 @@
 defmodule Dust.Bridge do
   @moduledoc """
-  Elixir interface to the Go tsnet sidecar.
+  GenServer that drives the Go `tsnet_sidecar` process via an Erlang port.
 
-  Communicates with the Go process over an Erlang port using `{:packet, 4}`
-  framing. Each command is a UTF-8 string sent as a length-prefixed message;
-  the sidecar responds with a length-prefixed reply.
+  The sidecar manages a Tailscale `tsnet` network interface and exposes a
+  simple text protocol over `{:packet, 4}` (length-prefixed) framing.
+  Commands are plain UTF-8 strings (e.g. `"PEERS"`, `"PROXY 100.64.0.2:9000"`)
+  and responses are prefixed with `"OK:"` or `"ERR: "`.
+
+  This module implements `Dust.Bridge.Behaviour` so consumers can swap in
+  a mock for testing via `:bridge_module` application config.
   """
 
   use GenServer
@@ -21,7 +25,11 @@ defmodule Dust.Bridge do
   end
 
   @doc """
-  Send a raw command string to the Go sidecar and return the response.
+  Sends a command string to the Go sidecar and returns the raw response.
+
+  Most callers should use the higher-level functions (`join/2`, `get_peers/0`,
+  etc.) instead of calling this directly. This function is public to support
+  ad-hoc debugging and future protocol extensions.
   """
   @spec send_command(String.t(), timeout()) :: {:ok, binary()} | {:error, term()}
   def send_command(command, timeout \\ 10_000) do
@@ -149,6 +157,7 @@ defmodule Dust.Bridge do
   # ── GenServer callbacks ─────────────────────────────────────────────────
 
   @impl true
+  @spec init(keyword()) :: {:ok, %{port: port()}}
   def init(opts) do
     sidecar = Keyword.get(opts, :sidecar_path, sidecar_path())
     state_dir = Keyword.get(opts, :ts_state_dir, Dust.Utilities.File.ts_state_dir())
@@ -201,6 +210,7 @@ defmodule Dust.Bridge do
 
   # ── Private ─────────────────────────────────────────────────────────────
 
+  @spec sidecar_path() :: Path.t()
   defp sidecar_path do
     default_path = Path.expand("../native/tsnet_sidecar/tsnet_sidecar", __DIR__)
 

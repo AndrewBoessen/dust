@@ -101,9 +101,10 @@ defmodule Dust.Core.Fitness do
 
   defmodule ModelStore do
     @moduledoc """
-    Persisted ETS-backed store for NodeEMA models.
+    Persisted ETS-backed store for `NodeEMA` models.
 
-    Models survive restarts via a CubDB database in `.dust/fitness_models/`.
+    Models survive restarts via a CubDB database at the path returned by
+    `Dust.Utilities.File.fitness_models_dir/0`.
     The GenServer owns the ETS table for its lifetime — if it crashes and is
     restarted by the supervisor, the table is recreated and models reloaded
     from disk automatically.

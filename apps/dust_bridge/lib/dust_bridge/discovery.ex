@@ -1,16 +1,28 @@
 defmodule Dust.Bridge.Discovery do
   @moduledoc """
-  Periodically queries the tsnet sidecar for peer Tailscale IPs and attempts
-  to form an Erlang cluster with them.
+  Periodically discovers peer Tailscale IPs and connects them to the
+  Erlang cluster.
+
+  Uses `Dust.Bridge.get_peers/0` to query the Go `tsnet_sidecar` for the
+  list of peer IPs on the same Tailnet, then calls `Node.connect/1` for
+  any peer not already in `Node.list/0`. Connection triggers the custom
+  EPMD module (`Dust.Bridge.EPMD`) which proxies Erlang distribution
+  traffic through the Tailscale tunnel.
+
+  The default poll interval is 15 seconds.
   """
   use GenServer
   require Logger
 
   @poll_interval 15_000
 
+  @doc false
+  @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
+
+  # ── GenServer callbacks ──────────────────────────────────────────────────
 
   @impl true
   def init(_opts) do
@@ -32,8 +44,10 @@ defmodule Dust.Bridge.Discovery do
     {:noreply, state}
   end
 
+  # ── Private ──────────────────────────────────────────────────────────────
+
+  @spec connect_to_peers([String.t()]) :: :ok
   defp connect_to_peers(peers) do
-    # Filter out our own node
     current_ip =
       Node.self()
       |> to_string()
@@ -47,12 +61,12 @@ defmodule Dust.Bridge.Discovery do
 
       if peer_node not in Node.list() do
         Logger.debug("Discovery: Attempting to connect to #{peer_node}")
-        # Node.connect will invoke our custom EPMD module and proxy target
         Node.connect(peer_node)
       end
     end)
   end
 
+  @spec schedule_poll() :: reference()
   defp schedule_poll do
     Process.send_after(self(), :poll_peers, @poll_interval)
   end

@@ -1,18 +1,9 @@
 defmodule Dust.Storage do
   @moduledoc """
-  Documentation for `Storage`.
+  Local chunk storage layer for the Dust network.
+
+  Responsible for persisting and retrieving encrypted, erasure-coded shards
+  on the local node's filesystem. This application is consumed by the mesh
+  layer to fulfill storage and retrieval requests from peer nodes.
   """
-
-  @doc """
-  Hello world.
-
-  ## Examples
-
-      iex> Dust.Storage.hello()
-      :world
-
-  """
-  def hello do
-    :world
-  end
 end

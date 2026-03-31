@@ -1,5 +1,19 @@
 defmodule Dust.Mesh.Application do
-  @moduledoc false
+  @moduledoc """
+  OTP Application for the Dust Mesh subsystem.
+
+  Starts the following children:
+
+  1. `Dust.Mesh.Registry` — Elixir `Registry` used as a local pub/sub bus
+     for node-status change notifications.
+  2. `Dust.Mesh.Database` (`CubDB`) — embedded database persisting CRDT state.
+  3. `Dust.Mesh.NodeRegistry` — tracks online/offline status of cluster peers.
+  4. `Dust.Mesh.FileSystem.DirMap` — CRDT-backed distributed directory tree.
+  5. `Dust.Mesh.FileSystem.FileMap` — CRDT-backed distributed file metadata.
+  6. `Dust.Mesh.Manifest.FileIndex` — maps file UUIDs to encrypted keys and chunk lists.
+  7. `Dust.Mesh.Manifest.ChunkIndex` — ref-counted chunk metadata index.
+  8. `Dust.Mesh.Manifest.ShardMap` — tracks erasure-coded shard placements across nodes.
+  """
 
   use Application
 

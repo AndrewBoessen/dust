@@ -1,29 +1,51 @@
 defmodule Dust.Bridge.EPMD do
   @moduledoc """
-  Custom EPMD module to route Erlang distribution over the Tailscale tsnet proxy.
+  Custom EPMD module that routes Erlang distribution over Tailscale.
+
+  Standard EPMD resolves node names to `{host, port}` pairs using the
+  system-wide `epmd` daemon. This module replaces that mechanism: instead
+  of querying `epmd`, it asks the Go `tsnet_sidecar` to open a local TCP
+  proxy that tunnels distribution traffic through the Tailscale network.
+
+  ## How it works
+
+  When `net_kernel` needs to connect to a remote node it calls
+  `address_please/3` (or `port_please/3` on older OTP releases). This
+  module responds by:
+
+  1. Asking `Dust.Bridge.proxy/2` to dial the peer's distribution port
+     (9000) over Tailscale.
+  2. Returning the resulting **local** proxy port so that `net_kernel`
+     connects to `127.0.0.1:<proxy_port>` transparently.
+
+  ## Configuration
+
+  Set the VM flag `-epmd_module Dust.Bridge.EPMD` (or via `vm.args`) to
+  activate this module.
+
+  The fixed distribution listening port (9000) must match the port
+  exposed by `Dust.Bridge.Setup`.
   """
 
-  # Called by net_kernel to find the port a remote node is listening on
-  def port_please(_name, host, _timeout \\ 5000) do
-    peer_ip = to_string(host)
+  @dist_port 9000
 
-    case Dust.Bridge.proxy(peer_ip, 9000) do
-      {:ok, local_port} ->
-        # Return {Port, Version} where Port is our dynamic proxy port
-        {:port, local_port, 5}
+  # ── Callbacks used by :net_kernel ────────────────────────────────────────
 
-      _error ->
-        {:port, 0, 5}
-    end
-  end
+  @doc """
+  Resolves a remote node's distribution address by opening a local proxy
+  through Tailscale.
 
-  # When address_please is defined, the :net_kernel calls it instead of port_please
+  Called by `:net_kernel` on OTP 25+. Returns `{:ok, address, port, version}`
+  where `address` is `127.0.0.1` (the local proxy endpoint) and `port` is the
+  dynamically assigned proxy port.
+  """
+  @spec address_please(charlist(), charlist(), :inet | :inet6) ::
+          {:ok, :inet.ip_address(), non_neg_integer(), 1..5} | {:error, :address}
   def address_please(_name, host, _address_family) do
     peer_ip = to_string(host)
 
-    case Dust.Bridge.proxy(peer_ip, 9000) do
+    case Dust.Bridge.proxy(peer_ip, @dist_port) do
       {:ok, local_port} ->
-        # Return local IPv4 address (127.0.0.1) and proxy port
         {:ok, {127, 0, 0, 1}, local_port, 5}
 
       _error ->
@@ -31,14 +53,50 @@ defmodule Dust.Bridge.EPMD do
     end
   end
 
-  def listen_port_please(_name, _host) do
-    # Return the fixed listening port 9000 for standard Dist over tsnet
-    {:ok, 9000}
+  @doc """
+  Legacy callback for resolving a remote node's distribution port.
+
+  Superseded by `address_please/3` on modern OTP but retained for
+  backwards compatibility. Returns `{:port, port, version}`.
+  """
+  @spec port_please(charlist(), charlist(), timeout()) ::
+          {:port, non_neg_integer(), 1..5}
+  def port_please(_name, host, _timeout \\ 5000) do
+    peer_ip = to_string(host)
+
+    case Dust.Bridge.proxy(peer_ip, @dist_port) do
+      {:ok, local_port} ->
+        {:port, local_port, 5}
+
+      _error ->
+        {:port, 0, 5}
+    end
   end
 
-  # Dummy implementations required by the :erl_epmd interface
+  @doc """
+  Returns the fixed port this node listens on for incoming distribution
+  connections.
+  """
+  @spec listen_port_please(charlist(), charlist()) :: {:ok, non_neg_integer()}
+  def listen_port_please(_name, _host) do
+    {:ok, @dist_port}
+  end
+
+  # ── Stub implementations required by the :erl_epmd interface ────────────
+
+  @doc false
+  @spec start_link() :: :ignore
   def start_link, do: :ignore
+
+  @doc false
+  @spec register_node(charlist(), non_neg_integer()) :: {:ok, pos_integer()}
   def register_node(_name, _port), do: {:ok, 1}
+
+  @doc false
+  @spec register_node(charlist(), non_neg_integer(), :inet | :inet6) :: {:ok, pos_integer()}
   def register_node(_name, _port, _family), do: {:ok, 1}
+
+  @doc false
+  @spec names(charlist()) :: {:error, :address}
   def names(_host), do: {:error, :address}
 end

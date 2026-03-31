@@ -12,10 +12,19 @@ defmodule Dust.Bridge.Secrets do
   use Agent
   require Logger
 
+  @doc false
+  @spec start_link(term()) :: Agent.on_start()
   def start_link(_) do
     Agent.start_link(fn -> nil end, name: __MODULE__)
   end
 
+  @doc """
+  Returns the base-64 encoded master key fetched during a mesh join,
+  or `nil` if no key has been cached.
+
+  Safe to call even if the Agent has not been started (returns `nil`).
+  """
+  @spec get_fetched_master_key() :: String.t() | nil
   def get_fetched_master_key() do
     if Process.whereis(__MODULE__) do
       Agent.get(__MODULE__, & &1)
@@ -24,29 +33,42 @@ defmodule Dust.Bridge.Secrets do
     end
   end
 
+  @doc """
+  Clears the cached master key so it cannot be read again.
+
+  Called by `Dust.Core.KeyStore` immediately after adopting the key.
+  No-op if the Agent is not running.
+  """
+  @spec clear_fetched_master_key() :: :ok
   def clear_fetched_master_key() do
     if Process.whereis(__MODULE__) do
       Agent.update(__MODULE__, fn _ -> nil end)
     end
+
+    :ok
   end
 
+  @doc "Caches a base-64 encoded master key obtained from a peer node."
+  @spec store_fetched_master_key(String.t()) :: :ok
   def store_fetched_master_key(master_key_b64) do
     Agent.update(__MODULE__, fn _ -> master_key_b64 end)
   end
 
   @doc """
-  Initializes the node's secrets at startup.
+  Initializes the node's OTP cookie at startup.
 
-  1. Checks if an OTP cookie already exists locally (in the TS state dir).
-  2. If it exists, it loads and applies the cookie.
-  3. If missing, and `JOIN_IP` / `JOIN_TOKEN` environments are provided, it initiates a secure
-     join process over Tailscale. The token is sent to the peer, and the secrets (OTP cookie
-     and Master Key) are retrieved.
-  4. If neither condition is met, it assumes it is the first node (genesis) and creates a
-     new securely randomized OTP cookie.
+  The function follows a three-step precedence:
 
-  It caches the Master Key (if retrieved) so the rest of the app can pick it up.
+  1. **Existing cookie** — If a cookie file already exists on disk, it is
+     loaded and applied via `Node.set_cookie/2`.
+  2. **Mesh join** — If `JOIN_IP` and `JOIN_TOKEN` environment variables are
+     set, the node contacts the specified peer over Tailscale to retrieve
+     the OTP cookie and master key. The master key is cached in this Agent
+     for `Dust.Core.KeyStore` to adopt on unlock.
+  3. **Genesis** — If no cookie exists and no join config is provided, a
+     fresh random cookie is generated for a new, standalone network.
   """
+  @spec setup() :: :ok
   def setup() do
     secrets_path = Dust.Utilities.File.secrets_file()
 

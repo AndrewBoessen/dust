@@ -1,5 +1,13 @@
 defmodule Dust.Core.Application do
-  @moduledoc false
+  @moduledoc """
+  OTP Application for the Dust Core subsystem.
+
+  Starts the following children:
+
+  1. `Dust.Core.KeyStore` — master-key vault (locked until user provides password).
+  2. `Dust.Core.Database` (`CubDB`) — embedded database backing the fitness model store.
+  3. `Dust.Core.Fitness.ModelStore` — ETS-cached, disk-persisted NodeEMA models.
+  """
 
   use Application
 

@@ -1,6 +1,39 @@
 defmodule Dust.Mesh.SharedMap do
   @moduledoc """
-  Behaviour and boilerplate for distributed shared maps backed by DeltaCrdt.
+  Reusable macro that provisions a CRDT-backed distributed map.
+
+  `use Dust.Mesh.SharedMap` injects a supervised `DeltaCrdt.AWLWWMap`
+  (add-wins last-writer-wins map) and a companion GenServer into the
+  calling module. The GenServer subscribes to `Dust.Mesh.NodeRegistry`
+  and automatically updates the CRDT's neighbour set whenever cluster
+  membership changes, ensuring data syncs to all connected nodes.
+
+  ## Usage
+
+      defmodule MyApp.Tags do
+        use Dust.Mesh.SharedMap
+
+        def put(id, tag),  do: crdt_put(id, tag)
+        def get(id),       do: crdt_get(id)
+        def delete(id),    do: crdt_delete(id)
+        def all(),         do: crdt_to_map()
+      end
+
+  ## Injected helpers (private to the using module)
+
+    * `crdt_put/2`     — insert or update a key/value pair.
+    * `crdt_get/1`     — read a single key (returns `nil` if missing or CRDT unavailable).
+    * `crdt_delete/1`  — remove a key.
+    * `crdt_to_map/0`  — snapshot the entire map as a plain Elixir map.
+
+  All helpers rescue `exit` signals from the CRDT process and return safe
+  fallbacks (`:ok | {:error, :crdt_unavailable}` for writes, `nil` / `%{}`
+  for reads) so that transient CRDT downtime does not crash the caller.
+
+  ## Persistence
+
+  CRDT state is persisted through `Dust.Mesh.SharedMap.Storage`, which
+  writes snapshots to the shared `Dust.Mesh.Database` (CubDB) instance.
   """
 
   defmacro __using__(_opts) do
@@ -13,6 +46,7 @@ defmodule Dust.Mesh.SharedMap do
 
       # ── Child spec ──────────────────────────────────────────────────────────
 
+      @doc false
       @spec child_spec(keyword()) :: Supervisor.child_spec()
       def child_spec(_opts) do
         %{
@@ -22,6 +56,7 @@ defmodule Dust.Mesh.SharedMap do
         }
       end
 
+      @doc false
       @spec start_link(keyword()) :: Supervisor.on_start()
       def start_link(_opts) do
         children = [
@@ -67,6 +102,7 @@ defmodule Dust.Mesh.SharedMap do
 
       # ── Protected CRDT helpers — called by the using module's typed API ──────
 
+      @spec crdt_put(term(), term()) :: :ok | {:error, :crdt_unavailable}
       defp crdt_put(key, value) do
         DeltaCrdt.put(@crdt_name, key, value)
         :ok
@@ -80,6 +116,7 @@ defmodule Dust.Mesh.SharedMap do
           {:error, :crdt_unavailable}
       end
 
+      @spec crdt_delete(term()) :: :ok | {:error, :crdt_unavailable}
       defp crdt_delete(key) do
         DeltaCrdt.delete(@crdt_name, key)
         :ok
@@ -93,6 +130,7 @@ defmodule Dust.Mesh.SharedMap do
           {:error, :crdt_unavailable}
       end
 
+      @spec crdt_get(term()) :: term() | nil
       defp crdt_get(key) do
         DeltaCrdt.get(@crdt_name, key)
       rescue
@@ -105,6 +143,7 @@ defmodule Dust.Mesh.SharedMap do
           nil
       end
 
+      @spec crdt_to_map() :: map()
       defp crdt_to_map do
         DeltaCrdt.to_map(@crdt_name)
       rescue
@@ -124,16 +163,22 @@ defmodule Dust.Mesh.SharedMap do
 
   defmodule Storage do
     @moduledoc """
-    Persists DeltaCrdt state to an embedded CubDB instance.
+    DeltaCrdt storage backend that persists CRDT snapshots to CubDB.
+
+    Implements the `DeltaCrdt.Storage` behaviour. Each CRDT instance is
+    stored under its process name as the CubDB key, inside the shared
+    `Dust.Mesh.Database` instance.
     """
     @behaviour DeltaCrdt.Storage
 
     @impl true
+    @spec write(atom(), term()) :: :ok
     def write(crdt_name, storage_format) do
       CubDB.put(Dust.Mesh.Database, crdt_name, storage_format)
     end
 
     @impl true
+    @spec read(atom()) :: term() | nil
     def read(crdt_name) do
       CubDB.get(Dust.Mesh.Database, crdt_name)
     end
