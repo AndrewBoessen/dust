@@ -1,0 +1,112 @@
+# Fake sidecar executable that speaks the {:packet, 4} wire protocol.
+#
+# Reads length-prefixed commands from stdin and writes back canned
+# responses using the same framing. Pattern-matches on the command
+# prefix to decide what to respond.
+#
+# Usage: elixir apps/dust_bridge/test/support/fake_sidecar.exs
+
+defmodule FakeSidecar do
+  @doc """
+  Main loop: read a {:packet, 4} frame, produce a response, write it back.
+  """
+  def run do
+    case read_frame() do
+      :eof ->
+        :ok
+
+      {:ok, command} ->
+        response = handle(command)
+        write_frame(response)
+        run()
+    end
+  end
+
+  # Read a 4-byte big-endian length prefix, then that many bytes of payload.
+  defp read_frame do
+    case IO.binread(:stdio, 4) do
+      :eof ->
+        :eof
+
+      {:error, _} ->
+        :eof
+
+      <<len::unsigned-big-32>> ->
+        case IO.binread(:stdio, len) do
+          :eof -> :eof
+          {:error, _} -> :eof
+          data when is_binary(data) -> {:ok, data}
+        end
+    end
+  end
+
+  # Write a 4-byte length prefix followed by the payload.
+  defp write_frame(data) do
+    len = byte_size(data)
+    IO.binwrite(:stdio, <<len::unsigned-big-32, data::binary>>)
+  end
+
+  # ── Command handlers ───────────────────────────────────────────────
+
+  defp handle("PEERS") do
+    "OK:100.64.0.1,100.64.0.2,100.64.0.3"
+  end
+
+  defp handle("PEERS_EMPTY") do
+    "OK:"
+  end
+
+  defp handle("EXPOSE " <> _port) do
+    "OK:exposed"
+  end
+
+  defp handle("PROXY " <> _target) do
+    "OK:54321"
+  end
+
+  defp handle("SERVE_SECRETS " <> _secrets) do
+    "OK:serving"
+  end
+
+  defp handle("INVITE_CREATE " <> _token) do
+    "OK:registered"
+  end
+
+  defp handle("JOIN " <> rest) do
+    # rest is "peer_ip token"
+    case String.split(rest, " ", parts: 2) do
+      [_peer, _token] ->
+        master_key_b64 = Base.encode64("fake_master_key_32_bytes________")
+        "OK:#{master_key_b64}:test_otp_cookie"
+
+      _ ->
+        "ERR: invalid join args"
+    end
+  end
+
+  defp handle("ERR_PEERS") do
+    "ERR: network unavailable"
+  end
+
+  defp handle("ERR_EXPOSE " <> _) do
+    "ERR: bind failed"
+  end
+
+  defp handle("ERR_PROXY " <> _) do
+    "ERR: dial failed"
+  end
+
+  defp handle("GARBAGE") do
+    "UNEXPECTED_FORMAT"
+  end
+
+  defp handle("EXIT") do
+    System.halt(0)
+  end
+
+  defp handle(unknown) do
+    "ERR: unknown command: #{unknown}"
+  end
+end
+
+FakeSidecar.run()
