@@ -6,8 +6,7 @@ defmodule Dust.Mesh.FileSystemTest do
   # ── Helpers ──────────────────────────────────────────────────────────────
 
   defp start_file_system! do
-    data_dir = Application.get_env(:dust_utilities, :persist_dir)
-    test_db_path = Path.join(data_dir, "mesh_db")
+    test_db_path = Dust.Utilities.File.mesh_db_dir()
 
     File.mkdir_p!(test_db_path)
     start_supervised!({Registry, keys: :duplicate, name: Dust.Mesh.Registry})
@@ -18,8 +17,7 @@ defmodule Dust.Mesh.FileSystemTest do
   end
 
   defp clean_data_dir! do
-    data_dir = Application.get_env(:dust_utilities, :persist_dir)
-    test_db_path = Path.join(data_dir, "mesh_db")
+    test_db_path = Dust.Utilities.File.mesh_db_dir()
     File.rm_rf(test_db_path)
   end
 

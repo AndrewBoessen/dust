@@ -94,7 +94,7 @@ defmodule Dust.Core.KeyStore do
 
   @impl true
   def init(opts) do
-    key_path = Keyword.get(opts, :key_path, key_path())
+    key_path = Keyword.get(opts, :key_path, Dust.Utilities.File.master_key_file())
 
     {:ok,
      %{
@@ -210,7 +210,9 @@ defmodule Dust.Core.KeyStore do
       bridge_module().serve_secrets(key_b64, otp_cookie)
     rescue
       err ->
-        Logger.warning("KeyStore: #{bridge_module()} is not available to serve secrets: #{inspect(err)}")
+        Logger.warning(
+          "KeyStore: #{bridge_module()} is not available to serve secrets: #{inspect(err)}"
+        )
     end
   end
 
@@ -254,12 +256,5 @@ defmodule Dust.Core.KeyStore do
         {:ok, hostname} = :inet.gethostname()
         to_string(hostname)
     end
-  end
-
-  # ── Default key path ───────────────────────────────────────────────
-  defp key_path do
-    default_path = Path.join([System.user_home!(), ".dust", "master.key"])
-
-    default_path
   end
 end

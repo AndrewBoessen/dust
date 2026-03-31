@@ -172,6 +172,7 @@ defmodule Dust.Core.ErasureCodingTest do
 
       for combo <- combos do
         available = Enum.filter(all_indexed, fn {i, _} -> i in combo end)
+
         assert {:ok, ^data} = ErasureCoding.decode(available, byte_size(data)),
                "Failed for shard combo #{inspect(combo)}"
       end

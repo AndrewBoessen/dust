@@ -123,8 +123,7 @@ defmodule Dust.Core.CryptoTest do
         Supervisor.delete_child(Dust.Core.Supervisor, Dust.Core.KeyStore)
       end
 
-      data_dir = Application.get_env(:dust_utilities, :persist_dir)
-      key_path = Path.join(data_dir, "master.key")
+      key_path = Dust.Utilities.File.master_key_file()
       File.rm(key_path)
 
       start_supervised!({Dust.Core.KeyStore, [key_path: key_path]})

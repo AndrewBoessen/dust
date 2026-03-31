@@ -12,8 +12,7 @@ defmodule Dust.Core.KeyStoreTest do
   # ── Helpers ─────────────────────────────────────────────────────────────
 
   defp start_key_store!() do
-    data_dir = Application.get_env(:dust_utilities, :persist_dir)
-    key_path = Path.join(data_dir, "master.key")
+    key_path = Dust.Utilities.File.master_key_file()
 
     pid = start_supervised!({KeyStore, [key_path: key_path]})
     Mox.allow(Dust.Bridge.Mock, self(), pid)
@@ -21,8 +20,7 @@ defmodule Dust.Core.KeyStoreTest do
   end
 
   defp clean_data_dir! do
-    data_dir = Application.get_env(:dust_utilities, :persist_dir)
-    key_path = Path.join(data_dir, "master.key")
+    key_path = Dust.Utilities.File.master_key_file()
     File.rm(key_path)
   end
 
@@ -41,8 +39,7 @@ defmodule Dust.Core.KeyStoreTest do
     end
 
     test "does not create key file on boot" do
-      data_dir = Application.get_env(:dust_utilities, :persist_dir)
-      key_path = Path.join(data_dir, "master.key")
+      key_path = Dust.Utilities.File.master_key_file()
 
       refute File.exists?(key_path)
     end
@@ -61,8 +58,7 @@ defmodule Dust.Core.KeyStoreTest do
 
     test "persists the key to disk on first unlock" do
       expect(Dust.Bridge.Mock, :serve_secrets, fn _, _ -> :ok end)
-      data_dir = Application.get_env(:dust_utilities, :persist_dir)
-      key_path = Path.join(data_dir, "master.key")
+      key_path = Dust.Utilities.File.master_key_file()
 
       :ok = KeyStore.unlock(@test_password)
 
@@ -182,8 +178,7 @@ defmodule Dust.Core.KeyStoreTest do
 
   describe "corrupt key file" do
     test "returns decrypt_failed for corrupt key file on unlock" do
-      data_dir = Application.get_env(:dust_utilities, :persist_dir)
-      key_path = Path.join(data_dir, "master.key")
+      key_path = Dust.Utilities.File.master_key_file()
 
       File.write!(key_path, "this is not a valid key file at all")
 

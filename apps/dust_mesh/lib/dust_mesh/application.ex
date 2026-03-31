@@ -5,8 +5,7 @@ defmodule Dust.Mesh.Application do
 
   @impl true
   def start(_type, _args) do
-    data_dir = Application.get_env(:dust_utilities, :persist_dir)
-    mesh_db_path = Path.join(data_dir, "mesh_db")
+    mesh_db_path = Dust.Utilities.File.mesh_db_dir()
 
     children = [
       {Registry, keys: :duplicate, name: Dust.Mesh.Registry},

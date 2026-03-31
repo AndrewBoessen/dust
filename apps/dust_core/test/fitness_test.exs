@@ -7,16 +7,14 @@ defmodule Dust.Core.FitnessTest do
   # ── Helpers ───────────────────────────────────────────────────────────────
 
   defp start_model_store!() do
-    data_dir = Application.get_env(:dust_utilities, :persist_dir)
-    fitness_model_path = Path.join(data_dir, "fitness_models")
+    fitness_model_path = Dust.Utilities.File.fitness_models_dir()
 
     start_supervised!({CubDB, data_dir: fitness_model_path, name: Dust.Core.Database})
     start_supervised!({ModelStore, [db: Dust.Core.Database]})
   end
 
   defp clean_data_dir! do
-    data_dir = Application.get_env(:dust_utilities, :persist_dir)
-    test_db_path = Path.join(data_dir, "fitness_models")
+    test_db_path = Dust.Utilities.File.fitness_models_dir()
     File.rm_rf(test_db_path)
   end
 
@@ -242,8 +240,7 @@ defmodule Dust.Core.FitnessTest do
       obs = %Observation{success: true, latency_ms: 25.0, bandwidth: 60.0}
       ModelStore.update("node-a", obs)
 
-      data_dir = Application.get_env(:dust_utilities, :persist_dir)
-      fitness_model_path = Path.join(data_dir, "fitness_models")
+      fitness_model_path = Dust.Utilities.File.fitness_models_dir()
 
       assert File.exists?(fitness_model_path)
     end

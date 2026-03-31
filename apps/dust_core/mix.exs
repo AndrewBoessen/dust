@@ -30,6 +30,7 @@ defmodule Dust.Core.MixProject do
       {:cubdb, "~> 2.0.2"},
       {:reed_solomon_ex, "~> 0.1.3"},
       {:dust_bridge, in_umbrella: true},
+      {:dust_utilities, in_umbrella: true},
       {:mox, "~> 1.0", only: :test}
     ]
   end

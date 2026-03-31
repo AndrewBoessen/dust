@@ -5,9 +5,8 @@ defmodule Dust.Core.Application do
 
   @impl true
   def start(_type, _args) do
-    data_dir = Application.get_env(:dust_utilities, :persist_dir)
-    key_path = Path.join(data_dir, "master.key")
-    fitness_model_path = Path.join(data_dir, "fitness_models")
+    key_path = Dust.Utilities.File.master_key_file()
+    fitness_model_path = Dust.Utilities.File.fitness_models_dir()
 
     children = [
       {Dust.Core.KeyStore, [key_path: key_path]},

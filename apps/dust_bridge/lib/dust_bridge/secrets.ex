@@ -12,9 +12,6 @@ defmodule Dust.Bridge.Secrets do
   use Agent
   require Logger
 
-  @secrets_file "secrets.json"
-  @state_dir "ts_state"
-
   def start_link(_) do
     Agent.start_link(fn -> nil end, name: __MODULE__)
   end
@@ -51,7 +48,7 @@ defmodule Dust.Bridge.Secrets do
   It caches the Master Key (if retrieved) so the rest of the app can pick it up.
   """
   def setup() do
-    secrets_path = get_secrets_path()
+    secrets_path = Dust.Utilities.File.secrets_file()
 
     if File.exists?(secrets_path) do
       Logger.info("Bridge Secrets: Found existing OTP cookie, loading...")
@@ -119,20 +116,5 @@ defmodule Dust.Bridge.Secrets do
     else
       Logger.warning("Bridge Secrets: Node is not alive! Cannot set OTP cookie.")
     end
-  end
-
-  defp get_secrets_path() do
-    data_dir =
-      Application.get_env(
-        :dust_utilities,
-        :persist_dir,
-        Path.join([System.user_home!(), ".dust"])
-      )
-
-    root_state_dir = Path.join(data_dir, @state_dir)
-
-    node_prefix = Node.self() |> to_string() |> String.split("@") |> List.first() || "unknown"
-    state_dir = Path.join(root_state_dir, "tsnet-state-#{node_prefix}")
-    Path.join(state_dir, @secrets_file)
   end
 end
