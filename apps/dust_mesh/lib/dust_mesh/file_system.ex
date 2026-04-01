@@ -3,18 +3,17 @@ defmodule Dust.Mesh.FileSystem.DirMap do
   Distributed shared map for directory entries.
 
   Keys are UUID strings identifying a directory. Values are DirMap structs with
-  `:name`, `:dirs` (MapSet), `:files` (MapSet), and `:created_at`.
+  `:name`, `:parent_id`, and `:created_at`.
   """
 
   use Dust.Mesh.SharedMap
 
-  @enforce_keys [:name, :dirs, :files, :created_at]
-  defstruct [:name, :dirs, :files, :created_at]
+  @enforce_keys [:name, :parent_id, :created_at]
+  defstruct [:name, :parent_id, :created_at]
 
   @type t :: %__MODULE__{
           name: String.t(),
-          dirs: MapSet.t(Dust.Mesh.FileSystem.uuid()),
-          files: MapSet.t(Dust.Mesh.FileSystem.uuid()),
+          parent_id: Dust.Mesh.FileSystem.uuid() | nil,
           created_at: DateTime.t()
         }
 
@@ -40,17 +39,17 @@ defmodule Dust.Mesh.FileSystem.FileMap do
   Distributed shared map for file metadata.
 
   Keys are UUID strings identifying a file. Values are FileMap structs
-  for metadata with `:created_at` and `:name` always present. Directory
-  membership is tracked entirely in `DirMap`.
+  for metadata with `:created_at`, `:name`, and `:dir_id` always present.
   """
 
   use Dust.Mesh.SharedMap
 
-  @enforce_keys [:name, :created_at]
-  defstruct [:name, :mime, :size, :checksum, :created_at]
+  @enforce_keys [:name, :dir_id, :created_at]
+  defstruct [:name, :dir_id, :mime, :size, :checksum, :created_at]
 
   @type t :: %__MODULE__{
           name: String.t(),
+          dir_id: Dust.Mesh.FileSystem.uuid(),
           mime: String.t() | nil,
           size: non_neg_integer() | nil,
           checksum: String.t() | nil,
@@ -81,15 +80,16 @@ defmodule Dust.Mesh.FileSystem do
   The structure uses two separate CRDT-backed shared maps:
 
     - `DirMap`  — stores directory entries keyed by UUID string.
-                  Each entry holds the directory name, a MapSet of child
-                  directory UUIDs, and a MapSet of child file UUIDs.
+                  Each entry holds the directory name, parent directory
+                  UUID (or nil), and creation timestamp.
 
     - `FileMap` — stores file metadata keyed by UUID string.
-                  Purely a flat key → metadata store; directory membership
-                  is tracked entirely in `DirMap`.
+                  Includes a dir_id to reference the directory it 
+                  currently sits in.
 
-  Both maps are AWLWWMap CRDTs that sync automatically across all
-  connected nodes via DeltaCrdt.
+  Because parents do not hold vectors/lists of children, concurrent
+  modifications (adding two files to a dir) resolve purely via independent
+  Last-Writer-Wins map keys, avoiding all TOCTOU data-loss.
   """
 
   alias Dust.Mesh.FileSystem.{DirMap, FileMap}
@@ -126,8 +126,7 @@ defmodule Dust.Mesh.FileSystem do
 
       entry = %DirMap{
         name: name,
-        dirs: MapSet.new(),
-        files: MapSet.new(),
+        parent_id: parent_id,
         created_at: DateTime.utc_now()
       }
 
@@ -136,12 +135,6 @@ defmodule Dust.Mesh.FileSystem do
           {:error, :crdt_unavailable}
 
         :ok ->
-          if parent_id do
-            update_dir!(parent_id, fn parent ->
-              %{parent | dirs: MapSet.put(parent.dirs, id)}
-            end)
-          end
-
           {:ok, id}
       end
     end
@@ -165,66 +158,59 @@ defmodule Dust.Mesh.FileSystem do
       nil ->
         {:error, :not_found}
 
-      entry ->
+      _entry ->
         child_dirs =
-          entry.dirs
-          |> Enum.map(fn id ->
-            case DirMap.get(id) do
-              nil -> nil
-              d -> Map.take(d, [:name, :created_at]) |> Map.put(:id, id)
-            end
+          DirMap.all()
+          |> Enum.filter(fn {_id, dir} -> dir.parent_id == dir_id end)
+          |> Enum.map(fn {id, dir} ->
+            Map.take(dir, [:name, :created_at]) |> Map.put(:id, id)
           end)
-          |> Enum.reject(&is_nil/1)
 
         child_files =
-          entry.files
-          |> Enum.map(fn id ->
-            case FileMap.get(id) do
-              nil -> nil
-              f -> Map.put(f, :id, id)
-            end
+          FileMap.all()
+          |> Enum.filter(fn {_id, file} -> file.dir_id == dir_id end)
+          |> Enum.map(fn {id, file} ->
+            Map.put(file, :id, id)
           end)
-          |> Enum.reject(&is_nil/1)
 
         %{dirs: child_dirs, files: child_files}
     end
   end
 
   @doc "Renames a directory in-place (does not move it)."
-  @spec rename_dir(uuid(), String.t()) :: :ok | {:error, :not_found}
+  @spec rename_dir(uuid(), String.t()) :: :ok | {:error, :not_found | :crdt_unavailable}
   def rename_dir(dir_id, new_name) when is_binary(dir_id) and is_binary(new_name) do
-    update_dir(dir_id, fn entry -> %{entry | name: new_name} end)
+    case DirMap.get(dir_id) do
+      nil -> {:error, :not_found}
+      entry ->
+        case DirMap.put(dir_id, %{entry | name: new_name}) do
+           {:error, :crdt_unavailable} -> {:error, :crdt_unavailable}
+           :ok -> :ok
+        end
+    end
   end
 
   @doc """
-  Removes an empty directory from its parent.
+  Removes an empty directory.
 
   Returns `{:error, :not_empty}` if the directory still contains children,
-  encouraging callers to remove contents first.
+  encouraging callers to remove contents first. (Accepts parent_id for legacy 
+  API compliance, but unneeded).
   """
   @spec rmdir(uuid(), uuid() | nil) :: :ok | {:error, :not_found | :not_empty | :crdt_unavailable}
-  def rmdir(dir_id, parent_id) when is_binary(dir_id) do
+  def rmdir(dir_id, _parent_id \\ nil) when is_binary(dir_id) do
     case DirMap.get(dir_id) do
       nil ->
         {:error, :not_found}
 
-      entry ->
-        if MapSet.size(entry.dirs) > 0 or MapSet.size(entry.files) > 0 do
+      _entry ->
+        has_dirs = DirMap.all() |> Enum.any?(fn {_id, dir} -> dir.parent_id == dir_id end)
+        has_files = FileMap.all() |> Enum.any?(fn {_id, file} -> file.dir_id == dir_id end)
+        
+        if has_dirs or has_files do
           {:error, :not_empty}
         else
-          case DirMap.delete(dir_id) do
-            {:error, :crdt_unavailable} ->
-              {:error, :crdt_unavailable}
-
-            :ok ->
-              if parent_id do
-                update_dir!(parent_id, fn parent ->
-                  %{parent | dirs: MapSet.delete(parent.dirs, dir_id)}
-                end)
-              end
-
-              :ok
-          end
+          DirMap.delete(dir_id)
         end
     end
   end
@@ -254,6 +240,7 @@ defmodule Dust.Mesh.FileSystem do
         file_attrs =
           metadata
           |> Map.put(:name, name)
+          |> Map.put(:dir_id, dir_id)
           |> Map.put(:created_at, DateTime.utc_now())
 
         file = struct(FileMap, file_attrs)
@@ -263,10 +250,6 @@ defmodule Dust.Mesh.FileSystem do
             {:error, :crdt_unavailable}
 
           :ok ->
-            update_dir!(dir_id, fn entry ->
-              %{entry | files: MapSet.put(entry.files, id)}
-            end)
-
             {:ok, id}
         end
     end
@@ -297,63 +280,29 @@ defmodule Dust.Mesh.FileSystem do
   end
 
   @doc """
-  Moves a file from `source_dir_id` to `dest_dir_id`.
-
-  The file metadata is unchanged; only the directory membership sets are
-  updated. If unlinking from the source succeeds but linking to the
-  destination fails, the file is re-linked to the source to prevent orphans.
+  Moves a file to `dest_dir_id`. (Accepts source_dir_id for legacy API compliance).
   """
   @spec mv_file(uuid(), uuid(), uuid()) :: :ok | {:error, :not_found}
-  def mv_file(file_id, source_dir_id, dest_dir_id)
-      when is_binary(file_id) and is_binary(source_dir_id) and is_binary(dest_dir_id) do
+  def mv_file(file_id, _source_dir_id \\ nil, dest_dir_id)
+      when is_binary(file_id) and is_binary(dest_dir_id) do
     with %{} <- FileMap.get(file_id),
-         %{} <- DirMap.get(source_dir_id),
          %{} <- DirMap.get(dest_dir_id) do
-      update_dir!(source_dir_id, fn entry ->
-        %{entry | files: MapSet.delete(entry.files, file_id)}
-      end)
-
-      case update_dir(dest_dir_id, fn entry ->
-             %{entry | files: MapSet.put(entry.files, file_id)}
-           end) do
-        :ok ->
-          :ok
-
-        {:error, :not_found} ->
-          Logger.warning(
-            "FileSystem.mv_file: dest dir #{dest_dir_id} vanished during move, rolling back"
-          )
-
-          update_dir!(source_dir_id, fn entry ->
-            %{entry | files: MapSet.put(entry.files, file_id)}
-          end)
-
-          {:error, :not_found}
-      end
+      update_file(file_id, %{dir_id: dest_dir_id})
+      :ok
     else
       nil -> {:error, :not_found}
     end
   end
 
-  @doc "Deletes a file and removes it from its parent directory."
-  @spec rm_file(uuid(), uuid()) :: :ok | {:error, :not_found | :crdt_unavailable}
-  def rm_file(file_id, dir_id) when is_binary(file_id) and is_binary(dir_id) do
+  @doc "Deletes a file entirely. (Accepts dir_id for legacy API compliance)."
+  @spec rm_file(uuid(), uuid() | nil) :: :ok | {:error, :not_found | :crdt_unavailable}
+  def rm_file(file_id, _dir_id \\ nil) when is_binary(file_id) do
     case FileMap.get(file_id) do
       nil ->
         {:error, :not_found}
 
       _meta ->
-        case FileMap.delete(file_id) do
-          {:error, :crdt_unavailable} ->
-            {:error, :crdt_unavailable}
-
-          :ok ->
-            update_dir!(dir_id, fn entry ->
-              %{entry | files: MapSet.delete(entry.files, file_id)}
-            end)
-
-            :ok
-        end
+        FileMap.delete(file_id)
     end
   end
 
@@ -368,34 +317,6 @@ defmodule Dust.Mesh.FileSystem do
   def all_files, do: FileMap.all()
 
   # ── Private helpers ─────────────────────────────────────────────────────────
-
-  @spec update_dir(uuid(), (dir_entry() -> dir_entry())) ::
-          :ok | {:error, :not_found | :crdt_unavailable}
-  defp update_dir(dir_id, fun) do
-    case DirMap.get(dir_id) do
-      nil ->
-        {:error, :not_found}
-
-      entry ->
-        case DirMap.put(dir_id, fun.(entry)) do
-          {:error, :crdt_unavailable} -> {:error, :crdt_unavailable}
-          :ok -> :ok
-        end
-    end
-  end
-
-  # Best-effort directory update that logs and swallows :not_found (TOCTOU race).
-  @spec update_dir!(uuid(), (dir_entry() -> dir_entry())) :: :ok
-  defp update_dir!(dir_id, fun) do
-    case update_dir(dir_id, fun) do
-      :ok ->
-        :ok
-
-      {:error, :not_found} ->
-        Logger.warning("FileSystem: directory #{dir_id} vanished during update (TOCTOU race)")
-        :ok
-    end
-  end
 
   @spec generate_uuid() :: uuid()
   defp generate_uuid do

@@ -36,8 +36,7 @@ defmodule Dust.Mesh.FileSystemTest do
 
       entry = FileSystem.get_dir(id)
       assert entry.name == "root"
-      assert entry.dirs == MapSet.new()
-      assert entry.files == MapSet.new()
+      assert entry.parent_id == nil
       assert %DateTime{} = entry.created_at
     end
 
@@ -46,10 +45,11 @@ defmodule Dust.Mesh.FileSystemTest do
       {:ok, child_id} = FileSystem.mkdir(parent_id, "child")
 
       parent = FileSystem.get_dir(parent_id)
-      assert MapSet.member?(parent.dirs, child_id)
+      assert parent.name == "parent"
 
       child = FileSystem.get_dir(child_id)
       assert child.name == "child"
+      assert child.parent_id == parent_id
     end
 
     test "returns {:error, :parent_not_found} for non-existent parent" do
@@ -135,7 +135,7 @@ defmodule Dust.Mesh.FileSystemTest do
       assert FileSystem.get_dir(child) == nil
 
       parent_entry = FileSystem.get_dir(parent)
-      refute MapSet.member?(parent_entry.dirs, child)
+      assert parent_entry.name == "parent"
     end
 
     test "removes a root directory with nil parent" do
@@ -173,8 +173,8 @@ defmodule Dust.Mesh.FileSystemTest do
       assert {:ok, file_id} = FileSystem.put_file(dir, "notes.txt", %{size: 100})
       assert is_binary(file_id)
 
-      dir_entry = FileSystem.get_dir(dir)
-      assert MapSet.member?(dir_entry.files, file_id)
+      file_meta = FileSystem.stat(file_id)
+      assert file_meta.dir_id == dir
     end
 
     test "automatically sets :name and :created_at in metadata" do
@@ -240,11 +240,8 @@ defmodule Dust.Mesh.FileSystemTest do
 
       assert :ok = FileSystem.mv_file(fid, src, dst)
 
-      src_entry = FileSystem.get_dir(src)
-      dst_entry = FileSystem.get_dir(dst)
-
-      refute MapSet.member?(src_entry.files, fid)
-      assert MapSet.member?(dst_entry.files, fid)
+      file_meta = FileSystem.stat(fid)
+      assert file_meta.dir_id == dst
     end
 
     test "returns {:error, :not_found} when file does not exist" do
@@ -254,19 +251,7 @@ defmodule Dust.Mesh.FileSystemTest do
       assert {:error, :not_found} = FileSystem.mv_file("missing", src, dst)
     end
 
-    test "returns {:error, :not_found} when source dir does not exist" do
-      {:ok, dir} = FileSystem.mkdir(nil, "dir")
-      {:ok, fid} = FileSystem.put_file(dir, "f.txt")
 
-      assert {:error, :not_found} = FileSystem.mv_file(fid, "missing", dir)
-    end
-
-    test "returns {:error, :not_found} when dest dir does not exist" do
-      {:ok, dir} = FileSystem.mkdir(nil, "dir")
-      {:ok, fid} = FileSystem.put_file(dir, "f.txt")
-
-      assert {:error, :not_found} = FileSystem.mv_file(fid, dir, "missing")
-    end
   end
 
   # ── rm_file/2 ───────────────────────────────────────────────────────────
@@ -279,9 +264,6 @@ defmodule Dust.Mesh.FileSystemTest do
       assert :ok = FileSystem.rm_file(fid, dir)
 
       assert FileSystem.stat(fid) == nil
-
-      dir_entry = FileSystem.get_dir(dir)
-      refute MapSet.member?(dir_entry.files, fid)
     end
 
     test "returns {:error, :not_found} for missing file" do

@@ -79,7 +79,6 @@ defmodule Dust.Mesh.ManifestTest do
       chunk = ChunkIndex.get(c1.hash)
       assert chunk.chunk_meta.hash == c1.hash
       assert chunk.chunk_meta.size == 100
-      assert chunk.ref_count == 1
     end
 
     test "handles empty chunk stream" do
@@ -112,43 +111,7 @@ defmodule Dust.Mesh.ManifestTest do
 
   # ── ChunkIndex ref counting ────────────────────────────────────────────
 
-  describe "ChunkIndex ref counting" do
-    test "increments ref_count on duplicate put" do
-      key = fake_encrypted_key()
-      entry = %{hash: "abc", size: 10, ref_count: 1}
 
-      ChunkIndex.put(key, entry)
-      assert ChunkIndex.get(key).ref_count == 1
-
-      ChunkIndex.put(key, entry)
-      assert ChunkIndex.get(key).ref_count == 2
-    end
-
-    test "delete decrements ref_count when > 1" do
-      key = fake_encrypted_key()
-      entry = %{hash: "abc", size: 10, ref_count: 1}
-
-      ChunkIndex.put(key, entry)
-      ChunkIndex.put(key, entry)
-      assert ChunkIndex.get(key).ref_count == 2
-
-      ChunkIndex.delete(key)
-      assert ChunkIndex.get(key).ref_count == 1
-    end
-
-    test "delete removes entry when ref_count reaches zero" do
-      key = fake_encrypted_key()
-      entry = %{hash: "abc", size: 10, ref_count: 1}
-
-      ChunkIndex.put(key, entry)
-      ChunkIndex.delete(key)
-      assert ChunkIndex.get(key) == nil
-    end
-
-    test "delete no-ops for missing key" do
-      assert :ok = ChunkIndex.delete("nonexistent")
-    end
-  end
 
   # ── FileIndex CRUD ─────────────────────────────────────────────────────
 

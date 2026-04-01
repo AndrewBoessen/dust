@@ -35,37 +35,28 @@ end
 
 defmodule Dust.Mesh.Manifest.ChunkIndex do
   @moduledoc """
-  Distributed shared map for chunk metadata with reference counting.
+  Distributed shared map for chunk metadata.
 
   Keys are encrypted chunk keys (binary strings). Values are ChunkIndex structs with
-  `:chunk_meta` and `:ref_count`. Duplicate puts increment the
-  reference count; deletes decrement it and only remove the entry when
-  the count reaches zero.
+  `:chunk_meta`. Because overlapping identical files have deterministic chunk meta,
+  concurrent inserts simply overwrite idempotently (zero read-modify-write).
   """
 
   use Dust.Mesh.SharedMap
 
-  @enforce_keys [:chunk_meta, :ref_count]
-  defstruct [:chunk_meta, :ref_count]
+  @enforce_keys [:chunk_meta]
+  defstruct [:chunk_meta]
 
   @type t :: %__MODULE__{
-          chunk_meta: Dust.Core.Crypto.ChunkMeta.t(),
-          ref_count: non_neg_integer()
+          chunk_meta: Dust.Core.Crypto.ChunkMeta.t()
         }
 
   @doc """
-  Stores chunk metadata or increments the reference count if the key
-  already exists.
+  Stores chunk metadata unconditionally, merging efficiently in LWW.
   """
   @spec put(String.t(), map()) :: :ok | {:error, :crdt_unavailable}
   def put(id, entry) do
-    case get(id) do
-      nil ->
-        crdt_put(id, entry)
-
-      existing ->
-        crdt_put(id, %{existing | ref_count: existing.ref_count + 1})
-    end
+    crdt_put(id, entry)
   end
 
   @doc "Returns the chunk index entry for `id`, or `nil` if not found."
@@ -73,21 +64,11 @@ defmodule Dust.Mesh.Manifest.ChunkIndex do
   def get(id), do: crdt_get(id)
 
   @doc """
-  Decrements the reference count for `id`. Removes the entry entirely
-  when the count reaches zero. No-ops if the key does not exist.
+  Deletes the chunk instance entirely.
   """
   @spec delete(String.t()) :: :ok | {:error, :crdt_unavailable}
   def delete(id) do
-    case get(id) do
-      nil ->
-        :ok
-
-      %{ref_count: 1} ->
-        crdt_delete(id)
-
-      existing ->
-        crdt_put(id, %{existing | ref_count: existing.ref_count - 1})
-    end
+    crdt_delete(id)
   end
 
   @doc "Returns all chunk index entries as a plain map."
@@ -100,9 +81,10 @@ defmodule Dust.Mesh.Manifest.ShardMap do
   Distributed shared map for shard placement.
 
   Tracks which nodes hold each erasure-coded shard for a given chunk.
-  Keys are composite strings `"{chunk_hash}:{shard_index}"`.  Values
-  are `ShardMap` structs with `:nodes` — a `MapSet` of node atoms,
-  allowing multiple nodes to replicate the same shard.
+  Keys are compound strings `"{chunk_hash}:{shard_index}:{node}"` to guarantee
+  conflict-free Last-Writer-Wins map writes under concurrency.
+
+  When queried, dynamically reconstitutes a map of `%ShardMap{}` structs for API parity.
   """
 
   use Dust.Mesh.SharedMap
@@ -116,47 +98,22 @@ defmodule Dust.Mesh.Manifest.ShardMap do
 
   @doc """
   Record that `node` holds shard `shard_index` for `chunk_hash`.
-
-  If the shard already has an entry, the node is added to the existing
-  set. Otherwise a new entry is created.
   """
   @spec put(String.t(), non_neg_integer(), node()) :: :ok | {:error, :crdt_unavailable}
   def put(chunk_hash, shard_index, node)
       when is_binary(chunk_hash) and is_integer(shard_index) and is_atom(node) do
-    k = key(chunk_hash, shard_index)
-
-    entry =
-      case crdt_get(k) do
-        nil -> %__MODULE__{nodes: MapSet.new([node])}
-        existing -> %{existing | nodes: MapSet.put(existing.nodes, node)}
-      end
-
-    crdt_put(k, entry)
+    k = key(chunk_hash, shard_index, node)
+    crdt_put(k, true)
   end
 
   @doc """
-  Removes a single node from a shard entry.
-
-  If the node set becomes empty after removal, the entry is deleted.
+  Removes a single node from a shard entry by deleting its specific key.
   """
   @spec remove_node(String.t(), non_neg_integer(), node()) :: :ok | {:error, :crdt_unavailable}
   def remove_node(chunk_hash, shard_index, node)
       when is_binary(chunk_hash) and is_integer(shard_index) and is_atom(node) do
-    k = key(chunk_hash, shard_index)
-
-    case crdt_get(k) do
-      nil ->
-        :ok
-
-      existing ->
-        new_nodes = MapSet.delete(existing.nodes, node)
-
-        if MapSet.size(new_nodes) == 0 do
-          crdt_delete(k)
-        else
-          crdt_put(k, %{existing | nodes: new_nodes})
-        end
-    end
+    k = key(chunk_hash, shard_index, node)
+    crdt_delete(k)
   end
 
   @doc """
@@ -169,39 +126,48 @@ defmodule Dust.Mesh.Manifest.ShardMap do
 
     crdt_to_map()
     |> Enum.filter(fn {k, _v} -> String.starts_with?(k, prefix) end)
-    |> Map.new(fn {k, v} ->
-      shard_index =
-        k
-        |> String.replace_prefix(prefix, "")
-        |> String.to_integer()
+    |> Enum.reduce(%{}, fn {k, _v}, acc ->
+      [_, shard_idx_str, node_str] = String.split(k, ":")
+      shard_index = String.to_integer(shard_idx_str)
+      node = String.to_atom(node_str)
 
-      {shard_index, v}
+      Map.update(acc, shard_index, %__MODULE__{nodes: MapSet.new([node])}, fn existing ->
+        %{existing | nodes: MapSet.put(existing.nodes, node)}
+      end)
     end)
   end
 
-  @doc "Removes all shard entries for `chunk_hash` (indices 0..total_shards-1)."
+  @doc "Removes all shard entries spanning all nodes for `chunk_hash`."
   @spec delete_shards(String.t(), non_neg_integer()) :: :ok
-  def delete_shards(chunk_hash, total_shards)
-      when is_binary(chunk_hash) and is_integer(total_shards) do
-    for i <- 0..(total_shards - 1)//1 do
-      crdt_delete(key(chunk_hash, i))
-    end
+  def delete_shards(chunk_hash, _total_shards)
+      when is_binary(chunk_hash) do
+    prefix = chunk_hash <> ":"
+
+    crdt_to_map()
+    |> Enum.filter(fn {k, _v} -> String.starts_with?(k, prefix) end)
+    |> Enum.each(fn {k, _v} -> crdt_delete(k) end)
 
     :ok
   end
 
-  @doc "Removes a single shard entry entirely (all nodes)."
+  @doc "Removes a single shard index entirely (all nodes)."
   @spec delete(String.t(), non_neg_integer()) :: :ok | {:error, :crdt_unavailable}
   def delete(chunk_hash, shard_index)
       when is_binary(chunk_hash) and is_integer(shard_index) do
-    crdt_delete(key(chunk_hash, shard_index))
+    prefix = "#{chunk_hash}:#{shard_index}:"
+
+    crdt_to_map()
+    |> Enum.filter(fn {k, _v} -> String.starts_with?(k, prefix) end)
+    |> Enum.each(fn {k, _v} -> crdt_delete(k) end)
+
+    :ok
   end
 
-  @doc "Returns the full shard map as a plain Elixir map."
+  @doc "Returns the full shard map as a plain Elixir map (for raw debugging)."
   @spec all() :: map()
   def all, do: crdt_to_map()
 
-  defp key(chunk_hash, shard_index), do: "#{chunk_hash}:#{shard_index}"
+  defp key(chunk_hash, shard_index, node), do: "#{chunk_hash}:#{shard_index}:#{node}"
 end
 
 defmodule Dust.Mesh.Manifest do
@@ -213,12 +179,11 @@ defmodule Dust.Mesh.Manifest do
     - `FileIndex`  — maps file UUIDs to their encrypted file key and
                      ordered list of chunk IDs.
 
-    - `ChunkIndex` — maps chunk IDs (hashes) to their
-                     content hash, size, and a reference count for
-                     deduplication across files.
+    - `ChunkIndex` — maps chunk IDs (hashes) to their content hash and size.
+                     Duplicate entries naturally overwrite (Add-Wins LWW).
 
-    - `ShardMap`   — maps `"{chunk_hash}:{shard_index}"` to the node
-                     holding that erasure-coded shard.
+    - `ShardMap`   — dynamic shard-holding registry utilizing flattened keys
+                     (node+shard+hash) to strictly prevent MapSet overwrites.
 
   All indices are backed by `Dust.Mesh.SharedMap` and sync automatically
   across all connected nodes via DeltaCrdt.
@@ -238,9 +203,8 @@ defmodule Dust.Mesh.Manifest do
   @doc """
   Indexes a file and all of its chunks into the manifest.
 
-  Each chunk from `chunk_meta_stream` is stored in the `ChunkIndex` (with
-  deduplication via reference counting), and the resulting chunk ID list is
-  persisted alongside the file's encrypted key in the `FileIndex`.
+  Each chunk from `chunk_meta_stream` is stored in the `ChunkIndex`, and the 
+  resulting chunk ID list is persisted alongside the file's encrypted key in `FileIndex`.
   """
   @spec store_file_stream(String.t(), FileMeta.t(), Enumerable.t(ChunkMeta.t())) ::
           :ok | {:error, :crdt_unavailable}
@@ -303,12 +267,10 @@ defmodule Dust.Mesh.Manifest do
   end
 
   @doc """
-  Removes a file and decrements the reference count for each of its chunks.
+  Removes a file and verifies if its chunks are orphaned.
 
-  Chunks whose reference count reaches zero are deleted from the `ChunkIndex`.
-  Shard placement entries are also cleaned up for fully dereferenced chunks.
-  `total_shards` is the number of erasure-coded shards per chunk (K + M).
-  Returns `{:error, :not_found}` if the file UUID is not in the index.
+  If no other surviving files reference those chunks in the FileIndex,
+  the chunks (and corresponding ShardMap tracker paths) are expunged.
   """
   @spec remove_file(String.t(), non_neg_integer()) :: :ok | {:error, :not_found}
   def remove_file(file_uuid, total_shards \\ 6) when is_binary(file_uuid) do
@@ -317,19 +279,22 @@ defmodule Dust.Mesh.Manifest do
         {:error, :not_found}
 
       %{chunks: chunks} ->
-        # Delete chunks first — if we crash mid-way, the file index still
-        # exists and cleanup can be retried. The reverse order (delete index
-        # first) would leave orphaned chunk entries with no way to find them.
-        Enum.each(chunks, fn chunk_hash ->
-          ChunkIndex.delete(chunk_hash)
+        # Drop the file reference first
+        FileIndex.delete(file_uuid)
 
-          # Clean up shard entries if chunk is fully dereferenced
-          if ChunkIndex.get(chunk_hash) == nil do
+        # Collect global references remaining across the system
+        live_chunks = 
+          FileIndex.all()
+          |> Enum.flat_map(fn {_id, f} -> f.chunks end)
+          |> MapSet.new()
+
+        Enum.each(chunks, fn chunk_hash ->
+          if not MapSet.member?(live_chunks, chunk_hash) do
+            ChunkIndex.delete(chunk_hash)
             ShardMap.delete_shards(chunk_hash, total_shards)
           end
         end)
 
-        FileIndex.delete(file_uuid)
         :ok
     end
   end
@@ -339,8 +304,7 @@ defmodule Dust.Mesh.Manifest do
   @spec store_chunk(ChunkMeta.t()) :: {:ok, String.t()} | {:error, :crdt_unavailable}
   defp store_chunk(%ChunkMeta{} = chunk_meta) do
     index = %ChunkIndex{
-      chunk_meta: chunk_meta,
-      ref_count: 1
+      chunk_meta: chunk_meta
     }
 
     key = chunk_meta.hash
