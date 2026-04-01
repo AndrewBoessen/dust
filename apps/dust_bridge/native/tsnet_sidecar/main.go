@@ -64,13 +64,11 @@ func main() {
 	// Wait for the node to be connected to the Tailnet in the background
 	// so the Elixir port loop doesn't block while waiting for auth.
 	// After connecting, verify that the control plane granted our tags.
-	go func() {
-		if _, err := srv.Up(context.Background()); err != nil {
-			log.Printf("Failed to connect to tailnet: %v", err)
-			return
-		}
-		verifyTags(srv)
-	}()
+	if _, err := srv.Up(context.Background()); err != nil {
+		log.Printf("Failed to connect to tailnet: %v", err)
+		return
+	}
+	verifyTags(srv)
 
 	// The Port Communication Loop
 	// Elixir uses BigEndian for {:packet, 4}
