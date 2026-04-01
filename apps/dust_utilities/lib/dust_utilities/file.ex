@@ -14,6 +14,7 @@ defmodule Dust.Utilities.File do
       ├── master.key              # encrypted master key (Dust.Core.KeyStore)
       ├── fitness_models/         # CubDB database for NodeEMA models
       ├── mesh_db/                # CubDB database for mesh CRDTs
+      ├── storage_db/             # RocksDB database for encrypted shard blobs
       └── ts_state/
           └── tsnet-state-<node>/ # per-node Tailscale tsnet state
               └── secrets.json    # persisted OTP cookie
@@ -22,6 +23,7 @@ defmodule Dust.Utilities.File do
   @master_key_file "master.key"
   @fitness_model_dir "fitness_models"
   @mesh_db_dir "mesh_db"
+  @storage_db_dir "storage_db"
   @ts_state_root "ts_state"
   @node_ts_state_prefix "tsnet-state"
   @secrets_file "secrets.json"
@@ -78,6 +80,17 @@ defmodule Dust.Utilities.File do
   @spec mesh_db_dir() :: Path.t()
   def mesh_db_dir do
     Path.join(persist_dir(), @mesh_db_dir)
+  end
+
+  @doc """
+  Absolute path to the `storage_db/` directory.
+
+  Stores the RocksDB database backing `Dust.Storage` for encrypted,
+  erasure-coded shard blobs.
+  """
+  @spec storage_db_dir() :: Path.t()
+  def storage_db_dir do
+    Path.join(persist_dir(), @storage_db_dir)
   end
 
   @doc """
