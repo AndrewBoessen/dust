@@ -170,6 +170,13 @@ defmodule Dust.Bridge do
 
     hostname = System.get_env("TS_HOSTNAME") || "dust-node-#{node_prefix}"
 
+    ts_tags =
+      Keyword.get(
+        opts,
+        :ts_tags,
+        Application.get_env(:dust_bridge, :ts_tags, "tag:dust-node")
+      )
+
     port =
       Port.open({:spawn_executable, sidecar}, [
         :binary,
@@ -177,7 +184,8 @@ defmodule Dust.Bridge do
         {:packet, 4},
         env: [
           {~c"TS_HOSTNAME", to_charlist(hostname)},
-          {~c"TS_STATE_DIR", to_charlist(state_dir)}
+          {~c"TS_STATE_DIR", to_charlist(state_dir)},
+          {~c"TS_TAGS", to_charlist(ts_tags)}
         ]
       ])
 
