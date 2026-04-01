@@ -15,6 +15,7 @@ import (
 
 	"tailscale.com/client/tailscale"
 	"tailscale.com/tsnet"
+	"tailscale.com/types/views"
 )
 
 const (
@@ -25,6 +26,7 @@ var (
 	inviteTokens   = make(map[string]time.Time)
 	inviteTokensMu sync.Mutex
 	masterSecrets  []byte
+	nodeTags       []string
 )
 
 func main() {
@@ -43,10 +45,14 @@ func main() {
 		stateDir = filepath.Join(homeDir, ".dust", "tsnet-state-"+hostname)
 	}
 
+	nodeTags = getAdvertiseTags()
+	log.Printf("Advertising tags: %v", nodeTags)
+
 	srv := &tsnet.Server{
-		Hostname: hostname,
-		Dir:      stateDir,
-		AuthKey:  os.Getenv("TS_AUTHKEY"),
+		Hostname:      hostname,
+		Dir:           stateDir,
+		AuthKey:       os.Getenv("TS_AUTHKEY"),
+		AdvertiseTags: nodeTags,
 	}
 	defer srv.Close()
 
@@ -57,11 +63,12 @@ func main() {
 
 	// Wait for the node to be connected to the Tailnet in the background
 	// so the Elixir port loop doesn't block while waiting for auth.
-	go func() {
-		if _, err := srv.Up(context.Background()); err != nil {
-			log.Printf("Failed to connect to tailnet: %v", err)
-		}
-	}()
+	// After connecting, verify that the control plane granted our tags.
+	if _, err := srv.Up(context.Background()); err != nil {
+		log.Printf("Failed to connect to tailnet: %v", err)
+		return
+	}
+	verifyTags(srv)
 
 	// The Port Communication Loop
 	// Elixir uses BigEndian for {:packet, 4}
@@ -145,7 +152,7 @@ func handleCommand(srv *tsnet.Server, cmd []byte) []byte {
 		}
 		var ips []string
 		for _, peer := range st.Peer {
-			if len(peer.TailscaleIPs) > 0 {
+			if hasMatchingTagView(peer.Tags) && len(peer.TailscaleIPs) > 0 {
 				ips = append(ips, peer.TailscaleIPs[0].String())
 			}
 		}
@@ -235,6 +242,10 @@ func exposeIncoming(srv *tsnet.Server, portStr string) {
 				log.Printf("EXPOSE unauthenticated peer: %v", tConn.RemoteAddr())
 				return
 			}
+			if !hasMatchingTag(whois.Node.Tags) {
+				log.Printf("EXPOSE rejected non-dust peer: %v (tags: %v)", tConn.RemoteAddr(), whois.Node.Tags)
+				return
+			}
 			localConn, err := net.Dial("tcp", "127.0.0.1:"+portStr)
 			if err != nil {
 				log.Printf("EXPOSE dial local error: %v", err)
@@ -315,6 +326,12 @@ func handleSecretClient(conn net.Conn, lc *tailscale.LocalClient) {
 		return
 	}
 
+	if !hasMatchingTag(whois.Node.Tags) {
+		log.Printf("SERVE_SECRETS: rejected non-dust peer: %v (tags: %v)", conn.RemoteAddr(), whois.Node.Tags)
+		conn.Write([]byte("ERR: Peer is not a dust node"))
+		return
+	}
+
 	buf := make([]byte, 32)
 	n, err := io.ReadFull(conn, buf)
 	if err != nil {
@@ -348,4 +365,101 @@ func handleSecretClient(conn net.Conn, lc *tailscale.LocalClient) {
 	if _, err := conn.Write(masterSecrets); err != nil {
 		log.Printf("SERVE_SECRETS: write error: %v", err)
 	}
+}
+
+// getAdvertiseTags returns the tags this node should advertise.
+// Reads from TS_TAGS env var (comma-separated), defaults to "tag:dust-node".
+func getAdvertiseTags() []string {
+	raw := os.Getenv("TS_TAGS")
+	if raw == "" {
+		return []string{"tag:dust-node"}
+	}
+	parts := strings.Split(raw, ",")
+	var tags []string
+	for _, t := range parts {
+		t = strings.TrimSpace(t)
+		if t != "" {
+			tags = append(tags, t)
+		}
+	}
+	if len(tags) == 0 {
+		return []string{"tag:dust-node"}
+	}
+	return tags
+}
+
+// hasMatchingTag returns true if a []string tag list shares at least one tag
+// with this node's advertised tags. Used with tailcfg.Node.Tags from WhoIs.
+func hasMatchingTag(peerTags []string) bool {
+	for _, pt := range peerTags {
+		for _, nt := range nodeTags {
+			if pt == nt {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// hasMatchingTagView returns true if a *views.Slice[string] tag list shares at
+// least one tag with this node's advertised tags. Used with ipnstate.PeerStatus.Tags.
+func hasMatchingTagView(peerTags *views.Slice[string]) bool {
+	if peerTags == nil {
+		return false
+	}
+	for i := range peerTags.Len() {
+		pt := peerTags.At(i)
+		for _, nt := range nodeTags {
+			if pt == nt {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// verifyTags checks that the control plane actually granted the requested tags
+// after the node connected. If tags were not granted (e.g. the authenticating
+// user is not in tagOwners, or an untagged auth key was used), the sidecar
+// exits with a fatal error to prevent running without ACL isolation.
+func verifyTags(srv *tsnet.Server) {
+	lc, err := srv.LocalClient()
+	if err != nil {
+		log.Printf("TAG CHECK: could not get local client: %v", err)
+		return
+	}
+	st, err := lc.Status(context.Background())
+	if err != nil {
+		log.Printf("TAG CHECK: could not get status: %v", err)
+		return
+	}
+	if st.Self == nil {
+		log.Printf("TAG CHECK: self status is nil, skipping")
+		return
+	}
+
+	granted := st.Self.Tags
+	if granted == nil || granted.Len() == 0 {
+		log.Fatalf("TAG CHECK FAILED: Node joined the tailnet WITHOUT any tags. "+
+			"ACL isolation will not work. Requested tags: %v. "+
+			"Ensure the authenticating user is listed in tagOwners for these tags, "+
+			"or use a TS_AUTHKEY generated with the required tags.", nodeTags)
+	}
+
+	for _, want := range nodeTags {
+		found := false
+		for i := range granted.Len() {
+			if granted.At(i) == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			log.Fatalf("TAG CHECK FAILED: Requested tag %q was not granted by the control plane. "+
+				"Granted tags: %v. Ensure the tag is defined in tagOwners and the auth method permits it.",
+				want, granted)
+		}
+	}
+
+	log.Printf("TAG CHECK OK: Node is running with tags: %v", granted)
 }

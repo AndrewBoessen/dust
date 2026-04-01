@@ -30,9 +30,6 @@ defmodule Dust.Bridge.Setup do
   """
   @spec run() :: :ok
   def run() do
-    # Give the bridge a short moment to fully initialize
-    Process.sleep(1000)
-
     Dust.Bridge.Secrets.setup()
 
     Logger.info("Bridge Setup: Informing tsnet sidecar to expose EPMD and Distribution ports")

@@ -30,4 +30,63 @@ Dust is a high-availability, decentralized file storage system. It leverages an 
 
 ## Configuration
 
+### Tailscale Tags & ACL Policy
+
+Dust nodes use **Tailscale tags** to group themselves on the tailnet and **ACL policies** to isolate them from other devices. Configure this in the [Tailscale Admin Console → Access Controls](https://login.tailscale.com/admin/acls/file):
+
+```json
+{
+  "tagOwners": {
+    "tag:dust-node": ["autogroup:admin"]
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "src": ["tag:dust-node"],
+      "dst": ["tag:dust-node:*"]
+    }
+  ]
+}
+```
+
+This ensures dust nodes can only communicate with each other — not with any other devices on your tailnet.
+
+### Auth Key
+
+Generate a **tagged auth key** in the admin console under **Settings → Keys**:
+
+1. Enable **Tags** and select `tag:dust-node`.
+2. Enable **Pre-approved** (if device approval is enabled).
+3. Optionally enable **Reusable** for multi-node deployments.
+
+```bash
+export TS_AUTHKEY="tskey-auth-..."
+```
+
+### Environment Variables
+
+| Variable      | Required | Default            | Description                                                  |
+| ------------- | -------- | ------------------ | ------------------------------------------------------------ |
+| `TS_AUTHKEY`  | No       | —                  | Tailscale auth key. If unset, interactive URL login is used. |
+| `TS_HOSTNAME` | No       | `dust-node-<name>` | Hostname for the node on the tailnet.                        |
+| `TS_TAGS`     | No       | `tag:dust-node`    | Comma-separated Tailscale tags to advertise.                 |
+| `JOIN_IP`     | No       | —                  | Tailscale IP of an existing node to join.                    |
+| `JOIN_TOKEN`  | No       | —                  | One-time invite token for mesh join.                         |
+
 ## Security
+
+### Interactive URL Authentication
+
+If you authenticate by visiting the Tailscale login URL (instead of using a `TS_AUTHKEY`), **the authenticating user must be listed in `tagOwners`** for the configured tag. For example, if your policy has:
+
+```json
+"tagOwners": { "tag:dust-node": ["alice@example.com"] }
+```
+
+Only `alice@example.com` can authenticate and receive the tag. If a different user authenticates, the node joins **without the tag**, which means:
+
+- ACL isolation rules **will not apply** — the node can see and be seen by other tailnet devices.
+- Other dust nodes **will not discover it** as a peer (peer discovery filters by tag).
+- The sidecar will detect this and **exit with a fatal error** to prevent running untagged.
+
+**Recommendation:** Use a tagged `TS_AUTHKEY` for production. It guarantees the correct tags regardless of who deploys the node.
