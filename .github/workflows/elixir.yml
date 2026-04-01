@@ -33,11 +33,14 @@ jobs:
           key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
           restore-keys: ${{ runner.os }}-mix-
       - name: Install dependencies
-        run: mix deps.get
+        run: |
+          mix deps.get
+          sudo apt-get update
+          sudo apt-get install -y libsnappy-dev
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: "1.22"
       - name: Build Go sidecar
         run: cd apps/dust_bridge/native/tsnet_sidecar && go build -o tsnet_sidecar
       - name: Run tests
