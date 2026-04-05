@@ -30,7 +30,9 @@ defmodule DustDaemon.MixProject do
       {:dust_mesh, in_umbrella: true},
       {:dust_storage, in_umbrella: true},
       {:dust_bridge, in_umbrella: true},
-      {:dust_utilities, in_umbrella: true}
+      {:dust_utilities, in_umbrella: true},
+      {:disk_space, "~> 1.0.0"},
+      {:rustler, "~> 0.37", override: true}
     ]
   end
 end
