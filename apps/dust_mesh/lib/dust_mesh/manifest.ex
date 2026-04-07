@@ -203,7 +203,7 @@ defmodule Dust.Mesh.Manifest do
   @doc """
   Indexes a file and all of its chunks into the manifest.
 
-  Each chunk from `chunk_meta_stream` is stored in the `ChunkIndex`, and the 
+  Each chunk from `chunk_meta_stream` is stored in the `ChunkIndex`, and the
   resulting chunk ID list is persisted alongside the file's encrypted key in `FileIndex`.
   """
   @spec store_file_stream(String.t(), FileMeta.t(), Enumerable.t(ChunkMeta.t())) ::
@@ -283,7 +283,7 @@ defmodule Dust.Mesh.Manifest do
         FileIndex.delete(file_uuid)
 
         # Collect global references remaining across the system
-        live_chunks = 
+        live_chunks =
           FileIndex.all()
           |> Enum.flat_map(fn {_id, f} -> f.chunks end)
           |> MapSet.new()

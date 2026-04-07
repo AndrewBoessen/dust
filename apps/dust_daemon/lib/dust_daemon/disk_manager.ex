@@ -159,7 +159,7 @@ defmodule Dust.Daemon.DiskManager do
     end
   end
 
-  @spec save_quota(non_neg_integer()) :: :ok | {:error, :file.posix()}
+  @spec save_quota(non_neg_integer()) :: :ok | {:error, File.posix()}
   defp save_quota(bytes) do
     payload = %{"quota_bytes" => bytes}
 

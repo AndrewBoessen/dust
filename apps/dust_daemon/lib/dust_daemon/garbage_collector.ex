@@ -29,6 +29,8 @@ defmodule Dust.Daemon.GarbageCollector do
     {:noreply, state}
   end
 
+  # TODO: Remove orphaned shards on the network. Remove redundant shards that are stored on other nodes.
+
   defp schedule_sweep do
     Process.send_after(self(), :sweep, @sweep_interval_ms)
   end
