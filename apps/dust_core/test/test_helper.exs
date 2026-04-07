@@ -1,8 +1,7 @@
-# Stop the application so tests have full control over supervised processes.
-# Without this, the `mod:` auto-start conflicts with `start_supervised!`.
-Application.stop(:dust_core)
-
 ExUnit.start()
 
-Mox.defmock(Dust.Bridge.Mock, for: Dust.Bridge.Behaviour)
+unless Code.ensure_loaded?(Dust.Bridge.Mock) do
+  Mox.defmock(Dust.Bridge.Mock, for: Dust.Bridge.Behaviour)
+end
+
 Application.put_env(:dust_bridge, :bridge_module, Dust.Bridge.Mock)

@@ -32,12 +32,6 @@ defmodule Dust.Storage do
 
   @doc """
   Store an encrypted shard binary under its composite key.
-
-  ## Parameters
-
-    * `chunk_hash` — hex-encoded SHA-256 hash identifying the chunk
-    * `shard_index` — 0-based shard index (0..K+M-1)
-    * `encrypted_binary` — the raw encrypted shard payload
   """
   @spec put_shard(String.t(), non_neg_integer(), binary()) :: :ok | {:error, term()}
   def put_shard(chunk_hash, shard_index, encrypted_binary)

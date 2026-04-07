@@ -16,12 +16,23 @@ defmodule Dust.Bridge.Application do
 
   @impl true
   def start(_type, _args) do
-    children = [
-      Dust.Bridge.Secrets,
+    base_children = [
+      Dust.Bridge.Secrets
+      # Any other state caches that your mock might still need to interact with
+    ]
+
+    sidecar_children = [
       Dust.Bridge,
       Dust.Bridge.Setup,
       Dust.Bridge.Discovery
     ]
+
+    children =
+      if Application.get_env(:dust_bridge, :start_sidecar, true) do
+        base_children ++ sidecar_children
+      else
+        base_children
+      end
 
     Supervisor.start_link(children, strategy: :one_for_one, name: Dust.Bridge.Supervisor)
   end

@@ -1,6 +1,8 @@
 defmodule Dust.Core.FitnessTest do
   use ExUnit.Case, async: false
 
+  @moduletag :tmp_dir
+
   alias Dust.Core.Fitness
   alias Dust.Core.Fitness.{Observation, NodeEMA, ModelStore}
 
@@ -13,15 +15,28 @@ defmodule Dust.Core.FitnessTest do
     start_supervised!({ModelStore, [db: Dust.Core.Database]})
   end
 
-  defp clean_data_dir! do
-    test_db_path = Dust.Utilities.File.fitness_models_dir()
-    File.rm_rf(test_db_path)
+  setup_all do
+    Application.stop(:dust_core)
+
+    on_exit(fn ->
+      Application.ensure_all_started(:dust_core)
+    end)
   end
 
-  setup do
-    clean_data_dir!()
+  setup %{tmp_dir: tmp_dir} do
+    old_env = Application.get_env(:dust_utilities, :persist_dir)
+    Application.put_env(:dust_utilities, :persist_dir, tmp_dir)
     start_model_store!()
-    on_exit(fn -> clean_data_dir!() end)
+
+    on_exit(fn ->
+      if old_env do
+        Application.put_env(:dust_utilities, :persist_dir, old_env)
+      else
+        Application.delete_env(:dust_utilities, :persist_dir)
+      end
+    end)
+
+    :ok
   end
 
   # ── Observation ───────────────────────────────────────────────────────────

@@ -32,7 +32,8 @@ defmodule DustDaemon.MixProject do
       {:dust_bridge, in_umbrella: true},
       {:dust_utilities, in_umbrella: true},
       {:disk_space, "~> 1.0.0"},
-      {:rustler, "~> 0.37", override: true}
+      {:rustler, "~> 0.37", override: true},
+      {:mox, "~> 1.0", only: :test}
     ]
   end
 end

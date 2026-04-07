@@ -8,6 +8,12 @@ defmodule Dust.BridgeTest do
 
   @fake_sidecar Path.expand("support/fake_sidecar", __DIR__)
 
+  setup_all do
+    Application.stop(:dust_bridge)
+
+    on_exit(fn -> Application.ensure_all_started(:dust_bridge) end)
+  end
+
   setup do
     # Find the elixir executable to run our fake sidecar script
     elixir_path = System.find_executable("elixir")
@@ -25,9 +31,7 @@ defmodule Dust.BridgeTest do
 
     # Start the Bridge GenServer with the fake sidecar
     pid =
-      start_supervised!(
-        {Dust.Bridge, [sidecar_path: wrapper, ts_state_dir: System.tmp_dir!()]}
-      )
+      start_supervised!({Dust.Bridge, [sidecar_path: wrapper, ts_state_dir: System.tmp_dir!()]})
 
     # Give the script a moment to boot
     Process.sleep(200)

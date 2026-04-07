@@ -11,9 +11,18 @@ defmodule Dust.Daemon.FileSystem do
   alias Dust.Storage
 
   @doc """
-  Uploads a file to the Dust network.
+  Uploads and distributes a local file across the Dust storage network.
 
-  Returns `{:ok, file_uuid}` on success or an error tuple.
+  This function orchestrates the entire upload pipeline:
+    1. Initializes an entry in the virtual file system.
+    2. Streams the file from disk, dividing it into encrypted chunks.
+    3. Applies erasure-coding to split each chunk into shards.
+    4. Distributes and stores the encoded shards into the storage engine.
+    5. Commits the final chunk metadata layout to the distributed manifest.
+
+  If an unrecoverable fault occurs at any point during chunking or writing to the manifest,
+  an internal cleanup routine is executed to roll back partial filesystem entries and
+  purge any orphaned shards from the cluster to prevent space leaks.
   """
   @spec upload(Path.t(), FileSystem.uuid(), String.t()) ::
           {:ok, FileSystem.uuid()}

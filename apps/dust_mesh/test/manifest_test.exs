@@ -1,6 +1,8 @@
 defmodule Dust.Mesh.ManifestTest do
   use ExUnit.Case, async: false
 
+  @moduletag :tmp_dir
+
   alias Dust.Mesh.Manifest
   alias Dust.Mesh.Manifest.{FileIndex, ChunkIndex, ShardMap}
   alias Dust.Core.Crypto.{FileMeta, ChunkMeta}
@@ -33,15 +35,28 @@ defmodule Dust.Mesh.ManifestTest do
     %FileMeta{encrypted_file_key: fake_encrypted_key()}
   end
 
-  defp clean_data_dir! do
-    test_db_path = Dust.Utilities.File.mesh_db_dir()
-    File.rm_rf(test_db_path)
+  setup_all do
+    Application.stop(:dust_mesh)
+
+    on_exit(fn ->
+      Application.ensure_all_started(:dust_mesh)
+    end)
   end
 
-  setup do
-    clean_data_dir!()
+  setup %{tmp_dir: tmp_dir} do
+    old_env = Application.get_env(:dust_utilities, :persist_dir)
+    Application.put_env(:dust_utilities, :persist_dir, tmp_dir)
     start_manifest!()
-    on_exit(fn -> clean_data_dir!() end)
+
+    on_exit(fn ->
+      if old_env do
+        Application.put_env(:dust_utilities, :persist_dir, old_env)
+      else
+        Application.delete_env(:dust_utilities, :persist_dir)
+      end
+    end)
+
+    :ok
   end
 
   # ── store_file_stream/3 ──────────────────────────────────────────────────
@@ -110,8 +125,6 @@ defmodule Dust.Mesh.ManifestTest do
   end
 
   # ── ChunkIndex ref counting ────────────────────────────────────────────
-
-
 
   # ── FileIndex CRUD ─────────────────────────────────────────────────────
 

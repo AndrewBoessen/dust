@@ -227,11 +227,13 @@ defmodule Dust.Mesh.FileSystem do
 
   Returns `{:ok, file_id}`.
   """
-  @spec put_file(uuid(), String.t(), map()) ::
+  @spec put_file(uuid(), String.t(), map() | struct()) ::
           {:ok, uuid()} | {:error, :dir_not_found | :crdt_unavailable}
   def put_file(dir_id, name, metadata \\ %{})
 
   def put_file(dir_id, name, metadata) when is_binary(dir_id) and is_binary(name) do
+    clean_meta = if is_struct(metadata), do: Map.from_struct(metadata), else: metadata
+
     case DirMap.get(dir_id) do
       nil ->
         {:error, :dir_not_found}
@@ -240,7 +242,7 @@ defmodule Dust.Mesh.FileSystem do
         id = generate_uuid()
 
         file_attrs =
-          metadata
+          clean_meta
           |> Map.put(:name, name)
           |> Map.put(:dir_id, dir_id)
           |> Map.put(:created_at, DateTime.utc_now())

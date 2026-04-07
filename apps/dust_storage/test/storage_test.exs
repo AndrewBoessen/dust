@@ -11,8 +11,15 @@ defmodule Dust.StorageTest do
   setup_all do
     Application.stop(:dust_storage)
 
+    old_env = Application.get_env(:dust_utilities, :persist_dir)
+
     on_exit(fn ->
-      Application.delete_env(:dust_utilities, :persist_dir)
+      if old_env do
+        Application.put_env(:dust_utilities, :persist_dir, old_env)
+      else
+        Application.delete_env(:dust_utilities, :persist_dir)
+      end
+
       Application.ensure_all_started(:dust_storage)
     end)
 

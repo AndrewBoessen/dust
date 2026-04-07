@@ -10,5 +10,8 @@ config :argon2_elixir,
 
 tmp_dir = System.tmp_dir!()
 
+# Disable tsnet sidecar in tests
+config :dust_bridge, :start_sidecar, false
+
 # Dust persist file root directory
 config :dust_utilities, :persist_dir, Path.join(System.tmp_dir!(), "dust_test")

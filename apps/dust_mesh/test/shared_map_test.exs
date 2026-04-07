@@ -12,6 +12,8 @@ end
 defmodule Dust.Mesh.SharedMapTest do
   use ExUnit.Case, async: false
 
+  @moduletag :tmp_dir
+
   # ── Helpers ──────────────────────────────────────────────────────────────
 
   defp start_deps! do
@@ -28,15 +30,28 @@ defmodule Dust.Mesh.SharedMapTest do
     start_supervised!(TestSharedMap)
   end
 
-  defp clean_data_dir! do
-    test_db_path = Dust.Utilities.File.mesh_db_dir()
-    File.rm_rf(test_db_path)
+  setup_all do
+    Application.stop(:dust_mesh)
+
+    on_exit(fn ->
+      Application.ensure_all_started(:dust_mesh)
+    end)
   end
 
-  setup do
-    clean_data_dir!()
+  setup %{tmp_dir: tmp_dir} do
+    old_env = Application.get_env(:dust_utilities, :persist_dir)
+    Application.put_env(:dust_utilities, :persist_dir, tmp_dir)
     start_shared_map!()
-    on_exit(fn -> clean_data_dir!() end)
+
+    on_exit(fn ->
+      if old_env do
+        Application.put_env(:dust_utilities, :persist_dir, old_env)
+      else
+        Application.delete_env(:dust_utilities, :persist_dir)
+      end
+    end)
+
+    :ok
   end
 
   # ── child_spec/1 ────────────────────────────────────────────────────────

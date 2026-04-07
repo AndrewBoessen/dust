@@ -5,13 +5,28 @@ defmodule Dust.Bridge.SecretsTest do
 
   @moduletag :tmp_dir
 
+  setup_all do
+    Application.stop(:dust_bridge)
+
+    on_exit(fn -> Application.ensure_all_started(:dust_bridge) end)
+  end
+
   setup %{tmp_dir: tmp_dir} do
+    old_env = Application.get_env(:dust_utilities, :persist_dir)
     # Point file paths at the test tmp dir
     Application.put_env(:dust_utilities, :persist_dir, tmp_dir)
 
     # Start a fresh Secrets agent for each test
     pid = start_supervised!(Secrets)
-    on_exit(fn -> Application.delete_env(:dust_utilities, :persist_dir) end)
+
+    on_exit(fn ->
+      if old_env do
+        Application.put_env(:dust_utilities, :persist_dir, old_env)
+      else
+        Application.delete_env(:dust_utilities, :persist_dir)
+      end
+    end)
+
     {:ok, agent: pid, tmp_dir: tmp_dir}
   end
 
