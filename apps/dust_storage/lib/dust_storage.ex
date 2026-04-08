@@ -88,6 +88,26 @@ defmodule Dust.Storage do
     RocksBackend.has_key?(key(chunk_hash, shard_index))
   end
 
+  @doc """
+  Returns all locally-stored shard keys as `{chunk_hash, shard_index}` tuples.
+
+  Iterates over RocksDB keys without reading values, making it safe for
+  large stores. Used by the garbage collector to reconcile local storage
+  against the distributed manifest.
+  """
+  @spec list_local_shard_keys() :: [{String.t(), non_neg_integer()}]
+  def list_local_shard_keys do
+    RocksBackend.fold_keys(
+      fn key, acc ->
+        case String.split(key, ":", parts: 2) do
+          [chunk_hash, idx_str] -> [{chunk_hash, String.to_integer(idx_str)} | acc]
+          _ -> acc
+        end
+      end,
+      []
+    )
+  end
+
   # ── Private ────────────────────────────────────────────────────────────
 
   @spec key(String.t(), non_neg_integer()) :: String.t()
