@@ -18,7 +18,6 @@ defmodule Dust.Bridge.Application do
   def start(_type, _args) do
     base_children = [
       Dust.Bridge.Secrets
-      # Any other state caches that your mock might still need to interact with
     ]
 
     sidecar_children = [

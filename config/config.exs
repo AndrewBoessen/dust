@@ -20,3 +20,8 @@ import Config
 #
 
 import_config "#{config_env()}.exs"
+
+config :dust_core,
+  default_k: 4,
+  default_m: 2,
+  encode_batch_size: 8192

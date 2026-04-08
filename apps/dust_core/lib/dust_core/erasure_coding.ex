@@ -13,13 +13,13 @@ defmodule Dust.Core.ErasureCoding do
   """
 
   # Default number of data shards
-  @default_k 4
+  @default_k Application.compile_env(:dust_core, :default_k, 4)
   # Default number of parity shards
-  @default_m 2
+  @default_m Application.compile_env(:dust_core, :default_m, 2)
 
   # Byte positions processed per parallel task during encode/decode.
   # Larger values reduce task overhead; smaller values improve parallelism.
-  @batch_size 8192
+  @batch_size Application.compile_env(:dust_core, :encode_batch_size, 8192)
 
   # ── Public API ──────────────────────────────────────────────────────────
 

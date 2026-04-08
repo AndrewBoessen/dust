@@ -107,13 +107,17 @@ defmodule Dust.Daemon.FileSystem do
   end
 
   defp cleanup_upload(file_uuid, meta_list) do
+    total_shards =
+      Application.get_env(:dust_core, :default_k, 4) +
+        Application.get_env(:dust_core, :default_m, 2)
+
     # purge the orphan filesystem entry
     Dust.Mesh.FileSystem.rm_file(file_uuid)
 
     # delete all tracked shards off disk and out of manifest
     Enum.each(meta_list, fn %Crypto.ChunkMeta{hash: chunk_hash} ->
-      Storage.delete_chunk_shards(chunk_hash, 6)
-      Dust.Mesh.Manifest.ShardMap.delete_shards(chunk_hash, 6)
+      Storage.delete_chunk_shards(chunk_hash, total_shards)
+      Dust.Mesh.Manifest.ShardMap.delete_shards(chunk_hash, total_shards)
     end)
   end
 
