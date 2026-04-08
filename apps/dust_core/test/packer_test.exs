@@ -23,7 +23,9 @@ defmodule Dust.Core.PackerTest do
 
     _ = stop_supervised(Dust.Core.KeyStore)
 
-    start_supervised!(Dust.Core.KeyStore)
+    pid = start_supervised!(Dust.Core.KeyStore)
+    Mox.allow(Dust.Bridge.Mock, self(), pid)
+    Mox.stub(Dust.Bridge.Mock, :serve_secrets, fn _, _ -> :ok end)
     :ok = Dust.Core.KeyStore.unlock("test_password")
 
     on_exit(fn ->

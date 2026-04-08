@@ -30,6 +30,10 @@ defmodule Dust.Core.KeyStoreTest do
     Application.put_env(:dust_utilities, :persist_dir, tmp_dir)
     start_key_store!()
 
+    # Stub serve_secrets globally so tests that don't explicitly expect it
+    # won't trigger Mox.UnexpectedCallError warnings in the KeyStore GenServer.
+    stub(Dust.Bridge.Mock, :serve_secrets, fn _, _ -> :ok end)
+
     on_exit(fn ->
       if old_env do
         Application.put_env(:dust_utilities, :persist_dir, old_env)
@@ -80,7 +84,7 @@ defmodule Dust.Core.KeyStoreTest do
     end
 
     test "decrypts existing key on unlock after restart" do
-      expect(Dust.Bridge.Mock, :serve_secrets, fn _, _ -> :ok end)
+      expect(Dust.Bridge.Mock, :serve_secrets, 2, fn _, _ -> :ok end)
       :ok = KeyStore.unlock(@test_password)
       {:ok, original_key} = KeyStore.get_key()
 

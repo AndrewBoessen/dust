@@ -16,6 +16,8 @@ defmodule Dust.Daemon.FileSystemTest do
   @moduletag :tmp_dir
 
   setup_all do
+    # Allow mock to be used by any process (safe since async: false)
+    Mox.set_mox_global()
     Mox.stub(Dust.Bridge.Mock, :serve_secrets, fn _, _ -> :ok end)
 
     # Ensure network layer dependencies are up
