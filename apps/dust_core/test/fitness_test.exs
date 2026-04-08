@@ -205,21 +205,21 @@ defmodule Dust.Core.FitnessTest do
 
   describe "ModelStore.get/1" do
     test "returns default model for an unknown node" do
-      assert ModelStore.get("unknown-node") == NodeEMA.new()
+      assert ModelStore.get(:"unknown-node") == NodeEMA.new()
     end
 
     test "returns stored model after an update" do
       obs = %Observation{success: true, latency_ms: 25.0, bandwidth: 60.0}
-      updated = ModelStore.update("node-a", obs)
+      updated = ModelStore.update(:"node-a", obs)
 
-      assert ModelStore.get("node-a") == updated
+      assert ModelStore.get(:"node-a") == updated
     end
   end
 
   describe "ModelStore.update/2" do
     test "returns the updated model" do
       obs = %Observation{success: true, latency_ms: 25.0, bandwidth: 60.0}
-      updated = ModelStore.update("node-a", obs)
+      updated = ModelStore.update(:"node-a", obs)
 
       assert updated.latency_ms < 100.0
       assert updated.bandwidth > 10.0
@@ -229,31 +229,31 @@ defmodule Dust.Core.FitnessTest do
     test "accumulates multiple observations" do
       obs = %Observation{success: true, latency_ms: 10.0, bandwidth: 100.0}
 
-      ModelStore.update("node-a", obs)
-      ModelStore.update("node-a", obs)
-      model = ModelStore.update("node-a", obs)
+      ModelStore.update(:"node-a", obs)
+      ModelStore.update(:"node-a", obs)
+      model = ModelStore.update(:"node-a", obs)
 
       assert model.latency_ms < 70.0
       assert model.bandwidth > 40.0
     end
 
     test "different node ids maintain independent models" do
-      ModelStore.update("fast-node", %Observation{
+      ModelStore.update(:"fast-node", %Observation{
         success: true,
         latency_ms: 10.0,
         bandwidth: 100.0
       })
 
-      ModelStore.update("slow-node", %Observation{success: false, latency_ms: nil, bandwidth: nil})
+      ModelStore.update(:"slow-node", %Observation{success: false, latency_ms: nil, bandwidth: nil})
 
-      assert ModelStore.get("fast-node").success_rate > ModelStore.get("slow-node").success_rate
+      assert ModelStore.get(:"fast-node").success_rate > ModelStore.get(:"slow-node").success_rate
     end
   end
 
   describe "ModelStore persistence" do
     test "persists models to disk on update" do
       obs = %Observation{success: true, latency_ms: 25.0, bandwidth: 60.0}
-      ModelStore.update("node-a", obs)
+      ModelStore.update(:"node-a", obs)
 
       fitness_model_path = Dust.Utilities.File.fitness_models_dir()
 
@@ -262,17 +262,17 @@ defmodule Dust.Core.FitnessTest do
 
     test "reloads models from disk on restart" do
       obs = %Observation{success: true, latency_ms: 25.0, bandwidth: 60.0}
-      updated = ModelStore.update("node-a", obs)
+      updated = ModelStore.update(:"node-a", obs)
 
       # Restart with same path — simulates an application restart
       stop_supervised!(ModelStore)
       start_supervised!({ModelStore, [db: Dust.Core.Database]})
 
-      assert ModelStore.get("node-a") == updated
+      assert ModelStore.get(:"node-a") == updated
     end
 
     test "starts cleanly with no persist file" do
-      assert ModelStore.get("any-node") == NodeEMA.new()
+      assert ModelStore.get(:"any-node") == NodeEMA.new()
     end
   end
 
@@ -280,33 +280,33 @@ defmodule Dust.Core.FitnessTest do
 
   describe "Fitness.score/1" do
     test "returns default score for a node never interacted with" do
-      assert Fitness.score("never-seen") == NodeEMA.new() |> NodeEMA.score()
+      assert Fitness.score(:"never-seen") == NodeEMA.new() |> NodeEMA.score()
     end
 
     test "score increases after successful interactions" do
-      initial_score = Fitness.score("node-a")
-      Fitness.record("node-a", %Observation{success: true, latency_ms: 10.0, bandwidth: 100.0})
+      initial_score = Fitness.score(:"node-a")
+      Fitness.record(:"node-a", %Observation{success: true, latency_ms: 10.0, bandwidth: 100.0})
 
-      assert Fitness.score("node-a") > initial_score
+      assert Fitness.score(:"node-a") > initial_score
     end
 
     test "score decreases after failed interactions" do
       good_obs = %Observation{success: true, latency_ms: 10.0, bandwidth: 100.0}
       bad_obs = %Observation{success: false, latency_ms: nil, bandwidth: nil}
 
-      Enum.each(1..5, fn _ -> Fitness.record("node-a", good_obs) end)
-      good_score = Fitness.score("node-a")
+      Enum.each(1..5, fn _ -> Fitness.record(:"node-a", good_obs) end)
+      good_score = Fitness.score(:"node-a")
 
-      Enum.each(1..5, fn _ -> Fitness.record("node-a", bad_obs) end)
+      Enum.each(1..5, fn _ -> Fitness.record(:"node-a", bad_obs) end)
 
-      assert Fitness.score("node-a") < good_score
+      assert Fitness.score(:"node-a") < good_score
     end
   end
 
   describe "Fitness.record/2" do
     test "returns the updated NodeEMA model" do
       obs = %Observation{success: true, latency_ms: 30.0, bandwidth: 50.0}
-      updated = Fitness.record("node-a", obs)
+      updated = Fitness.record(:"node-a", obs)
 
       assert %NodeEMA{} = updated
       assert updated.latency_ms < 100.0
@@ -314,9 +314,9 @@ defmodule Dust.Core.FitnessTest do
 
     test "score reflects the most recently recorded observation" do
       obs = %Observation{success: true, latency_ms: 10.0, bandwidth: 100.0}
-      Fitness.record("node-a", obs)
+      Fitness.record(:"node-a", obs)
 
-      assert_in_delta Fitness.score("node-a"), NodeEMA.score(ModelStore.get("node-a")), 0.0001
+      assert_in_delta Fitness.score(:"node-a"), NodeEMA.score(ModelStore.get(:"node-a")), 0.0001
     end
   end
 end

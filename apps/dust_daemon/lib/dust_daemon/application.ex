@@ -8,10 +8,10 @@ defmodule DustDaemon.Application do
   @impl true
   def start(_type, _args) do
     children = [
+      {Registry, keys: :duplicate, name: Dust.Daemon.Registry},
       {Task.Supervisor, name: Dust.Daemon.JobQueue},
       Dust.Daemon.Bootstrapper,
       Dust.Daemon.BandwidthThrottler,
-      Dust.Daemon.PeerMonitor,
       Dust.Daemon.DiskManager,
       Dust.Daemon.GarbageCollector,
       Dust.Daemon.RepairScheduler

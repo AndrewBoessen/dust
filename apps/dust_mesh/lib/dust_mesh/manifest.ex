@@ -267,6 +267,23 @@ defmodule Dust.Mesh.Manifest do
   end
 
   @doc """
+  Returns the chunks making up the file and file metadata
+
+  Returns `{:ok, [String.t()], Dust.Core.Crypto.FileMeta.t()}` where each element is a chunk hash or error if file uuid not found
+  """
+  @spec get_file(String.t()) ::
+          {:ok, [String.t()], Dust.Core.Crypto.FileMeta.t()} | {:error, :file_not_found}
+  def get_file(file_uuid) when is_binary(file_uuid) do
+    case FileIndex.get(file_uuid) do
+      %FileIndex{chunks: chunks, file_meta: meta} ->
+        {:ok, chunks, meta}
+
+      nil ->
+        {:error, :file_not_found}
+    end
+  end
+
+  @doc """
   Removes a file and verifies if its chunks are orphaned.
 
   If no other surviving files reference those chunks in the FileIndex,
@@ -296,6 +313,17 @@ defmodule Dust.Mesh.Manifest do
         end)
 
         :ok
+    end
+  end
+
+  @doc """
+  Returns the `ChunkMeta` for a given chunk hash, or `nil` if not found.
+  """
+  @spec get_chunk_meta(String.t()) :: ChunkMeta.t() | nil
+  def get_chunk_meta(chunk_hash) when is_binary(chunk_hash) do
+    case ChunkIndex.get(chunk_hash) do
+      %ChunkIndex{chunk_meta: meta} -> meta
+      nil -> nil
     end
   end
 
