@@ -244,7 +244,11 @@ defmodule Dust.Core.FitnessTest do
         bandwidth: 100.0
       })
 
-      ModelStore.update(:"slow-node", %Observation{success: false, latency_ms: nil, bandwidth: nil})
+      ModelStore.update(:"slow-node", %Observation{
+        success: false,
+        latency_ms: nil,
+        bandwidth: nil
+      })
 
       assert ModelStore.get(:"fast-node").success_rate > ModelStore.get(:"slow-node").success_rate
     end

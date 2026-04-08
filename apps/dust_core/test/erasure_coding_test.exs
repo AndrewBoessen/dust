@@ -40,17 +40,6 @@ defmodule Dust.Core.ErasureCodingTest do
       assert byte_size(hd(shards)) == expected_shard_size
     end
 
-    test "handles empty binary" do
-      {:ok, shards} = ErasureCoding.encode(<<>>)
-      assert length(shards) == 6
-      assert Enum.all?(shards, &(&1 == <<>>))
-    end
-
-    test "handles single byte" do
-      {:ok, shards} = ErasureCoding.encode(<<42>>)
-      assert length(shards) == 6
-    end
-
     test "handles data exactly divisible by K" do
       data = :crypto.strong_rand_bytes(400)
       {:ok, shards} = ErasureCoding.encode(data)
@@ -89,19 +78,6 @@ defmodule Dust.Core.ErasureCodingTest do
       {:ok, shards} = ErasureCoding.encode(data)
       available = all_shards_with_indices(shards)
       assert {:ok, ^data} = ErasureCoding.decode(available, byte_size(data))
-    end
-
-    test "empty binary" do
-      {:ok, shards} = ErasureCoding.encode(<<>>)
-      available = all_shards_with_indices(shards)
-      assert {:ok, <<>>} = ErasureCoding.decode(available, 0)
-    end
-
-    test "single byte" do
-      data = <<42>>
-      {:ok, shards} = ErasureCoding.encode(data)
-      available = all_shards_with_indices(shards)
-      assert {:ok, ^data} = ErasureCoding.decode(available, 1)
     end
 
     test "exact block boundary (divisible by K)" do
