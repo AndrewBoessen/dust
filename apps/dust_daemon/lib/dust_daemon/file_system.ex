@@ -12,6 +12,7 @@ defmodule Dust.Daemon.FileSystem do
   alias Dust.Mesh.{FileSystem, Manifest}
   alias Dust.Mesh.NodeRegistry
   alias Dust.Storage
+  alias Dust.Utilities.Config
 
   require Logger
 
@@ -131,7 +132,10 @@ defmodule Dust.Daemon.FileSystem do
   # Encodes a single chunk into shards, stores them locally, and records
   # shard placements in the manifest.
   defp encode_and_store_chunk(%Crypto.ChunkMeta{hash: chunk_hash} = chunk_meta, binary) do
-    {:ok, shards} = ErasureCoding.encode(binary)
+    k = Config.erasure_k()
+    m = Config.erasure_m()
+
+    {:ok, shards} = ErasureCoding.encode(binary, k, m)
 
     case store_shards_locally(chunk_hash, shards) do
       {:ok, shard_placements} ->
@@ -192,9 +196,7 @@ defmodule Dust.Daemon.FileSystem do
   end
 
   defp cleanup_upload(file_uuid, meta_list) do
-    total_shards =
-      Application.get_env(:dust_core, :default_k, 4) +
-        Application.get_env(:dust_core, :default_m, 2)
+    total_shards = Config.total_shards()
 
     FileSystem.rm_file(file_uuid)
 
@@ -265,8 +267,8 @@ defmodule Dust.Daemon.FileSystem do
   end
 
   defp download_and_write_chunk(chunk_hash, file_key, file) do
-    k = Application.get_env(:dust_core, :default_k, 4)
-    m = Application.get_env(:dust_core, :default_m, 2)
+    k = Config.erasure_k()
+    m = Config.erasure_m()
 
     case Manifest.get_chunk_meta(chunk_hash) do
       nil ->

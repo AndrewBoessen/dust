@@ -3,10 +3,7 @@ defmodule Dust.Utilities.File do
   Centralized file path management for persistent data structures.
 
   All persistent paths in the Dust umbrella resolve through this module.
-  The root directory defaults to `~/.dust` but is configurable via the
-  `:dust_utilities` application environment:
-
-      config :dust_utilities, persist_dir: "/custom/path"
+  The root directory is configured via `Dust.Utilities.Config`.
 
   ## Directory layout
 
@@ -28,7 +25,6 @@ defmodule Dust.Utilities.File do
   @node_ts_state_prefix "tsnet-state"
   @secrets_file "secrets.json"
   @default_node_name "unknown"
-  @disk_quato_file "disk_quota.json"
 
   @doc """
   Returns the base persistence directory.
@@ -44,11 +40,7 @@ defmodule Dust.Utilities.File do
   """
   @spec persist_dir() :: Path.t()
   def persist_dir do
-    Application.get_env(
-      :dust_utilities,
-      :persist_dir,
-      Path.join([System.user_home!(), ".dust"])
-    )
+    Dust.Utilities.Config.persist_dir()
   end
 
   @doc """
@@ -116,17 +108,6 @@ defmodule Dust.Utilities.File do
   @spec secrets_file(String.t()) :: Path.t()
   def secrets_file(prefix \\ node_prefix()) do
     Path.join(ts_state_dir(prefix), @secrets_file)
-  end
-
-  @doc """
-  Absolute path to the `disk_quota.json` file.
-
-  Store the upper bound on the number of bytes that
-  can be stored on the node's database.
-  """
-  @spec disk_quota_file() :: Path.t()
-  def disk_quota_file do
-    Path.join(persist_dir(), @disk_quato_file)
   end
 
   # Derives a node-unique prefix from `Node.self()` for path isolation

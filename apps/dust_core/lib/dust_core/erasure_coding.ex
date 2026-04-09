@@ -7,8 +7,7 @@ defmodule Dust.Core.ErasureCoding do
   original data, so the network tolerates losing up to M nodes.
   """
 
-  @default_k Application.compile_env(:dust_core, :default_k, 4)
-  @default_m Application.compile_env(:dust_core, :default_m, 2)
+  alias Dust.Utilities.Config
 
   # ── Public API ──────────────────────────────────────────────────────────
 
@@ -18,10 +17,10 @@ defmodule Dust.Core.ErasureCoding do
   Returns `{:ok, shards}` where `shards` is a list of K+M binaries,
   indices 0..K-1 are data shards and K..K+M-1 are parity shards.
 
-  Defaults to K=#{@default_k}, M=#{@default_m}.
+  Defaults to configured `Config.erasure_k()` and `Config.erasure_m()`.
   """
   @spec encode(binary()) :: {:ok, [binary()]} | {:error, term()}
-  def encode(data) when is_binary(data), do: encode(data, @default_k, @default_m)
+  def encode(data) when is_binary(data), do: encode(data, Config.erasure_k(), Config.erasure_m())
 
   @spec encode(binary(), pos_integer(), pos_integer()) :: {:ok, [binary()]} | {:error, term()}
   def encode(data, k, m) when is_binary(data) and k >= 1 and m >= 1 do
@@ -53,7 +52,7 @@ defmodule Dust.Core.ErasureCoding do
   @spec decode([{non_neg_integer(), binary()}], non_neg_integer()) ::
           {:ok, binary()} | {:error, atom()}
   def decode(available_shards, original_size),
-    do: decode(available_shards, original_size, @default_k, @default_m)
+    do: decode(available_shards, original_size, Config.erasure_k(), Config.erasure_m())
 
   @spec decode(
           [{non_neg_integer(), binary()}],

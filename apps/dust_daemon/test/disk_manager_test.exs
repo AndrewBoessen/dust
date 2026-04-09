@@ -7,15 +7,15 @@ defmodule Dust.Daemon.DiskManagerTest do
 
   # We reset the quota after texts to keep state clean since DiskManager is registered globally.
   setup %{tmp_dir: tmp_dir} do
-    old_env = Application.get_env(:dust_utilities, :persist_dir)
-    Application.put_env(:dust_utilities, :persist_dir, tmp_dir)
+    old_env = Application.get_env(:dust_utilities, :config, %{})
+    Application.put_env(:dust_utilities, :config, %{persist_dir: tmp_dir})
     current_quota = DiskManager.get_quota()
 
     on_exit(fn ->
       if old_env do
-        Application.put_env(:dust_utilities, :persist_dir, old_env)
+        Application.put_env(:dust_utilities, :config, old_env)
       else
-        Application.delete_env(:dust_utilities, :persist_dir)
+        Application.delete_env(:dust_utilities, :config)
       end
 
       # Restore roughly enough quota to let everything be normal or a safe value 
@@ -40,7 +40,7 @@ defmodule Dust.Daemon.DiskManagerTest do
     assert DiskManager.get_quota() == safe_test_quota
 
     # Check persistence
-    config_path = Path.join(Dust.Utilities.File.persist_dir(), "disk_quota.json")
+    config_path = Dust.Utilities.Config.config_path()
     assert {:ok, body} = File.read(config_path)
     assert body =~ Integer.to_string(safe_test_quota)
   end

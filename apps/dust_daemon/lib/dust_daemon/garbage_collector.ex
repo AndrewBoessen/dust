@@ -33,6 +33,7 @@ defmodule Dust.Daemon.GarbageCollector do
   alias Dust.Mesh.Manifest.{FileIndex, ShardMap}
   alias Dust.Mesh.NodeRegistry
   alias Dust.Storage
+  alias Dust.Utilities.Config
 
   # Run every hour by default
   @sweep_interval_ms 60_000 * 60
@@ -142,7 +143,7 @@ defmodule Dust.Daemon.GarbageCollector do
   # online nodes.
   @spec sweep_replicas([{String.t(), non_neg_integer()}]) :: non_neg_integer()
   defp sweep_replicas(local_keys) do
-    replication_factor = Application.get_env(:dust_daemon, :replication_factor, 2)
+    replication_factor = Config.replication_factor()
     online_nodes = MapSet.new(NodeRegistry.online_nodes())
     me = node()
 
@@ -178,9 +179,7 @@ defmodule Dust.Daemon.GarbageCollector do
     Storage.delete_shard(chunk_hash, shard_index)
     ShardMap.remove_node(chunk_hash, shard_index, node())
 
-    Logger.info(
-      "GarbageCollector: removed shard #{chunk_hash}:#{shard_index} (#{reason})"
-    )
+    Logger.info("GarbageCollector: removed shard #{chunk_hash}:#{shard_index} (#{reason})")
   end
 
   defp schedule_sweep do

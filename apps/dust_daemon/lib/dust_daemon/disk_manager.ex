@@ -83,8 +83,7 @@ defmodule Dust.Daemon.DiskManager do
     Logger.info("Starting Disk Quota Manager daemon.")
 
     # 50 GB
-    default_quota = 50_000_000_000
-    quota_bytes = load_quota(default_quota)
+    quota_bytes = Dust.Utilities.Config.disk_quota_bytes()
     state = %{quota_bytes: quota_bytes}
 
     # Verify if we still have the capacity we booted with
@@ -98,7 +97,7 @@ defmodule Dust.Daemon.DiskManager do
   def handle_call({:set_quota, bytes}, _from, state) do
     case check_os_capacity(bytes) do
       :ok ->
-        save_quota(bytes)
+        Dust.Utilities.Config.put(:disk_quota_bytes, bytes)
         {:reply, :ok, %{state | quota_bytes: bytes}}
 
       {:error, reason} ->
@@ -129,42 +128,6 @@ defmodule Dust.Daemon.DiskManager do
       )
 
       {:error, :insufficient_disk_space}
-    end
-  end
-
-  @spec config_file_path() :: String.t()
-  defp config_file_path do
-    Dust.Utilities.File.disk_quota_file()
-  end
-
-  @spec load_quota(non_neg_integer()) :: non_neg_integer()
-  defp load_quota(default_quota) do
-    case File.read(config_file_path()) do
-      {:ok, body} ->
-        # Simple decode without pulling in a whole JSON library 
-        # (assuming Jason is available based on deps.get)
-        case Code.ensure_loaded(Jason) do
-          {:module, _} ->
-            case Jason.decode(body) do
-              {:ok, %{"quota_bytes" => val}} -> val
-              _ -> default_quota
-            end
-
-          {:error, _} ->
-            default_quota
-        end
-
-      {:error, _} ->
-        default_quota
-    end
-  end
-
-  @spec save_quota(non_neg_integer()) :: :ok | {:error, File.posix()}
-  defp save_quota(bytes) do
-    payload = %{"quota_bytes" => bytes}
-
-    if Code.ensure_loaded?(Jason) do
-      File.write(config_file_path(), Jason.encode!(payload))
     end
   end
 end

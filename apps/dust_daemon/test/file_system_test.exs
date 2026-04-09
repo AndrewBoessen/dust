@@ -23,16 +23,16 @@ defmodule Dust.Daemon.FileSystemTest do
     # Ensure network layer dependencies are up
     Application.ensure_all_started(:dust_daemon)
 
-    old_env = Application.get_env(:dust_utilities, :persist_dir)
+    old_env = Application.get_env(:dust_utilities, :config, %{})
 
     # Unlock KeyStore
     KeyStore.unlock(@test_password)
 
     on_exit(fn ->
       if old_env do
-        Application.put_env(:dust_utilities, :persist_dir, old_env)
+        Application.put_env(:dust_utilities, :config, old_env)
       else
-        Application.delete_env(:dust_utilities, :persist_dir)
+        Application.delete_env(:dust_utilities, :config)
       end
     end)
 
@@ -41,7 +41,7 @@ defmodule Dust.Daemon.FileSystemTest do
 
   setup %{tmp_dir: tmp_dir} do
     # Override persistent directory dynamically for this test process
-    Application.put_env(:dust_utilities, :persist_dir, tmp_dir)
+    Application.put_env(:dust_utilities, :config, %{persist_dir: tmp_dir})
     :ok
   end
 

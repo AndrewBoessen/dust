@@ -119,8 +119,8 @@ defmodule Dust.Core.CryptoTest do
 
   describe "encrypt_with_master/1 and decrypt_file_key/1" do
     setup %{tmp_dir: tmp_dir} do
-      old_env = Application.get_env(:dust_utilities, :persist_dir)
-      Application.put_env(:dust_utilities, :persist_dir, tmp_dir)
+      old_env = Application.get_env(:dust_utilities, :config, %{})
+      Application.put_env(:dust_utilities, :config, %{persist_dir: tmp_dir})
 
       # Ensure a fresh, unlocked KeyStore for master-key tests
       if Process.whereis(Dust.Core.Supervisor) do
@@ -137,9 +137,9 @@ defmodule Dust.Core.CryptoTest do
 
       on_exit(fn ->
         if old_env do
-          Application.put_env(:dust_utilities, :persist_dir, old_env)
+          Application.put_env(:dust_utilities, :config, old_env)
         else
-          Application.delete_env(:dust_utilities, :persist_dir)
+          Application.delete_env(:dust_utilities, :config)
         end
       end)
 
