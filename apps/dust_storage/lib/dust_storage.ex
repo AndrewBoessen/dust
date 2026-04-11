@@ -37,7 +37,10 @@ defmodule Dust.Storage do
   def put_shard(chunk_hash, shard_index, encrypted_binary)
       when is_binary(chunk_hash) and is_integer(shard_index) and shard_index >= 0 and
              is_binary(encrypted_binary) do
-    RocksBackend.put(key(chunk_hash, shard_index), encrypted_binary)
+    hash = :crypto.hash(:sha256, encrypted_binary)
+    payload_to_store = encrypted_binary <> hash
+
+    RocksBackend.put(key(chunk_hash, shard_index), payload_to_store)
   end
 
   @doc """
@@ -46,10 +49,56 @@ defmodule Dust.Storage do
   Returns `{:ok, binary}` on success, or `{:error, :not_found}` if the
   shard is not stored locally.
   """
-  @spec get_shard(String.t(), non_neg_integer()) :: {:ok, binary()} | {:error, :not_found}
+  @spec get_shard(String.t(), non_neg_integer()) ::
+          {:ok, binary()} | {:error, :not_found | :integrity_check_failed | :invalid_format}
   def get_shard(chunk_hash, shard_index)
       when is_binary(chunk_hash) and is_integer(shard_index) and shard_index >= 0 do
-    RocksBackend.get(key(chunk_hash, shard_index))
+    case RocksBackend.get(key(chunk_hash, shard_index)) do
+      {:ok, stored_value} when byte_size(stored_value) >= 32 ->
+        payload_size = byte_size(stored_value) - 32
+        <<payload::binary-size(payload_size), stored_hash::binary-32>> = stored_value
+
+        if :crypto.hash(:sha256, payload) == stored_hash do
+          {:ok, payload}
+        else
+          {:error, :integrity_check_failed}
+        end
+
+      {:ok, _stored_value} ->
+        {:error, :invalid_format}
+
+      error ->
+        error
+    end
+  end
+
+  @doc """
+  Verifies the local integrity of a shard without returning its binary payload.
+
+  Returns `:ok` if the shard exists and its checksum matches, `{:error, :not_found}` if missing,
+  or `{:error, :integrity_check_failed}` if corrupted.
+  """
+  @spec verify_shard(String.t(), non_neg_integer()) ::
+          :ok | {:error, :not_found | :integrity_check_failed | :invalid_format}
+  def verify_shard(chunk_hash, shard_index)
+      when is_binary(chunk_hash) and is_integer(shard_index) and shard_index >= 0 do
+    case RocksBackend.get(key(chunk_hash, shard_index)) do
+      {:ok, stored_value} when byte_size(stored_value) >= 32 ->
+        payload_size = byte_size(stored_value) - 32
+        <<payload::binary-size(payload_size), stored_hash::binary-32>> = stored_value
+
+        if :crypto.hash(:sha256, payload) == stored_hash do
+          :ok
+        else
+          {:error, :integrity_check_failed}
+        end
+
+      {:ok, _stored_value} ->
+        {:error, :invalid_format}
+
+      error ->
+        error
+    end
   end
 
   @doc """
