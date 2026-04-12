@@ -211,7 +211,9 @@ defmodule Dust.Daemon.RepairScheduler do
             rebalance =
               online_count == replication_factor and
                 my_load < max_local_shards and
-                Enum.any?(online_holders, fn n -> Map.get(initial_loads, n, 0) > max_local_shards end)
+                Enum.any?(online_holders, fn n ->
+                  Map.get(initial_loads, n, 0) > max_local_shards
+                end)
 
             if under_replicated or rebalance do
               case clone_shard(chunk_hash, shard_index, online_holders, me) do

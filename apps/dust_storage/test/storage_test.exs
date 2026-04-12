@@ -82,11 +82,12 @@ defmodule Dust.StorageTest do
 
     test "detects corrupted payload" do
       data = <<1, 2, 3>>
-      bad_hash = <<0::256>> # Intentionally incorrect 32-byte hash
+      # Intentionally incorrect 32-byte hash
+      bad_hash = <<0::256>>
 
       # Simulate corruption by writing a bad hash manually to the RocksDB backend
       Dust.Storage.RocksBackend.put("corrupt:0", data <> bad_hash)
-      
+
       assert {:error, :integrity_check_failed} = Storage.get_shard("corrupt", 0)
       assert {:error, :integrity_check_failed} = Storage.verify_shard("corrupt", 0)
     end

@@ -42,7 +42,12 @@ defmodule Dust.Utilities.Config do
   }
 
   @boot_only_keys [:persist_dir, :erasure_k, :erasure_m]
-  @runtime_keys [:replication_factor, :disk_quota_bytes, :stale_node_timeout_ms, :max_reconstruct_per_sweep]
+  @runtime_keys [
+    :replication_factor,
+    :disk_quota_bytes,
+    :stale_node_timeout_ms,
+    :max_reconstruct_per_sweep
+  ]
   @all_keys @boot_only_keys ++ @runtime_keys
 
   @config_filename "config.yaml"
