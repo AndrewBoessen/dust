@@ -129,6 +129,29 @@ defmodule Dust.Storage do
   end
 
   @doc """
+  Returns the approximate size in bytes of a locally stored shard,
+  or `nil` if the shard does not exist.
+
+  Reads the raw value from RocksDB and strips the 32-byte checksum
+  trailer — no integrity verification is performed, making this a
+  fast path for disk-quota estimation in the repair scheduler.
+  """
+  @spec shard_size(String.t(), non_neg_integer()) :: non_neg_integer() | nil
+  def shard_size(chunk_hash, shard_index)
+      when is_binary(chunk_hash) and is_integer(shard_index) and shard_index >= 0 do
+    case RocksBackend.get(key(chunk_hash, shard_index)) do
+      {:ok, stored_value} when byte_size(stored_value) >= 32 ->
+        byte_size(stored_value) - 32
+
+      {:ok, stored_value} ->
+        byte_size(stored_value)
+
+      {:error, :not_found} ->
+        nil
+    end
+  end
+
+  @doc """
   Check if a shard exists locally without reading the full binary.
   """
   @spec has_shard?(String.t(), non_neg_integer()) :: boolean()

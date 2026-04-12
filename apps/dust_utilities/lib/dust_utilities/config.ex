@@ -13,8 +13,12 @@ defmodule Dust.Utilities.Config do
 
   ## Runtime-mutable settings
 
-    * `:replication_factor` — min copies on other nodes before GC eviction (default 2)
-    * `:disk_quota_bytes`   — max bytes this node may store (default 50 GB)
+    * `:replication_factor`         — min copies on other nodes before GC eviction (default 2)
+    * `:disk_quota_bytes`            — max bytes this node may store (default 50 GB)
+    * `:stale_node_timeout_ms`       — ms an offline node must be gone before its shard
+                                        entries are pruned from the manifest (default 24 h)
+    * `:max_reconstruct_per_sweep`   — max chunks the repair scheduler will reconstruct
+                                        via erasure coding per sweep (default 5)
 
   Runtime changes are automatically persisted back to `<persist_dir>/config.yaml`.
 
@@ -32,11 +36,13 @@ defmodule Dust.Utilities.Config do
     erasure_k: 4,
     erasure_m: 2,
     replication_factor: 2,
-    disk_quota_bytes: 50_000_000_000
+    disk_quota_bytes: 50_000_000_000,
+    stale_node_timeout_ms: 86_400_000,
+    max_reconstruct_per_sweep: 5
   }
 
   @boot_only_keys [:persist_dir, :erasure_k, :erasure_m]
-  @runtime_keys [:replication_factor, :disk_quota_bytes]
+  @runtime_keys [:replication_factor, :disk_quota_bytes, :stale_node_timeout_ms, :max_reconstruct_per_sweep]
   @all_keys @boot_only_keys ++ @runtime_keys
 
   @config_filename "config.yaml"
@@ -57,6 +63,12 @@ defmodule Dust.Utilities.Config do
   #
   # disk_quota_bytes   — Maximum bytes this node will store locally.
   #                      Can be changed at runtime. Default: 50 GB.
+  #
+  # stale_node_timeout_ms — Milliseconds an offline node must be gone before its
+  #                         shard entries are pruned from the manifest. Default: 24 h.
+  #
+  # max_reconstruct_per_sweep — Maximum chunks the repair scheduler will reconstruct
+  #                             via erasure coding per sweep cycle. Default: 5.
   #
   """
 
@@ -81,6 +93,14 @@ defmodule Dust.Utilities.Config do
   @doc "Maximum bytes this node may store."
   @spec disk_quota_bytes() :: pos_integer()
   def disk_quota_bytes, do: get(:disk_quota_bytes)
+
+  @doc "Milliseconds before an offline node's shard entries are pruned."
+  @spec stale_node_timeout_ms() :: pos_integer()
+  def stale_node_timeout_ms, do: get(:stale_node_timeout_ms)
+
+  @doc "Max chunks to reconstruct per repair sweep."
+  @spec max_reconstruct_per_sweep() :: pos_integer()
+  def max_reconstruct_per_sweep, do: get(:max_reconstruct_per_sweep)
 
   @doc "Total shard count (K + M)."
   @spec total_shards() :: pos_integer()
@@ -310,6 +330,8 @@ defmodule Dust.Utilities.Config do
   defp validate_key(:erasure_m, v) when is_integer(v) and v >= 1, do: :ok
   defp validate_key(:replication_factor, v) when is_integer(v) and v >= 1, do: :ok
   defp validate_key(:disk_quota_bytes, v) when is_integer(v) and v > 0, do: :ok
+  defp validate_key(:stale_node_timeout_ms, v) when is_integer(v) and v > 0, do: :ok
+  defp validate_key(:max_reconstruct_per_sweep, v) when is_integer(v) and v >= 0, do: :ok
   defp validate_key(:persist_dir, v) when is_binary(v) and v != "", do: :ok
   defp validate_key(key, value), do: {:error, {key, :invalid, value}}
 end
