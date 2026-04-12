@@ -87,11 +87,40 @@ defmodule Dust.Daemon.FileSystem do
   """
   @spec upload(Path.t(), FileSystem.uuid(), String.t()) ::
           {:ok, FileSystem.uuid()}
-          | {:error, File.posix() | :file_store_failed | :crdt_unavailable | :dir_not_found}
+          | {:error,
+             File.posix()
+             | :file_store_failed
+             | :crdt_unavailable
+             | :dir_not_found
+             | :insufficient_disk_quota}
   def upload(local_file_path, dest_dir_id, file_name) do
-    with {:ok, file_meta, stream} <- Packer.process_file_stream(local_file_path),
+    with :ok <- check_upload_quota(local_file_path),
+         {:ok, file_meta, stream} <- Packer.process_file_stream(local_file_path),
          {:ok, file_uuid} <- FileSystem.put_file(dest_dir_id, file_name, file_meta) do
       upload_chunks(file_uuid, file_meta, stream)
+    end
+  end
+
+  # Estimates the total local storage needed for the erasure-coded shards
+  # and checks it against the disk quota. Erasure coding expands the
+  # original file by a factor of (K+M)/K.
+  @spec check_upload_quota(Path.t()) :: :ok | {:error, :insufficient_disk_quota | File.posix()}
+  defp check_upload_quota(local_file_path) do
+    case File.stat(local_file_path) do
+      {:ok, %File.Stat{size: file_size}} ->
+        k = Config.erasure_k()
+        total = Config.total_shards()
+        # Each chunk produces total shards, each ≈ chunk_size/k bytes
+        estimated_bytes = ceil(file_size * total / k)
+
+        if Dust.Daemon.DiskManager.can_allocate_bytes?(estimated_bytes) do
+          :ok
+        else
+          {:error, :insufficient_disk_quota}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
