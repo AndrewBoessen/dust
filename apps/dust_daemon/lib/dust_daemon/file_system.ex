@@ -96,7 +96,11 @@ defmodule Dust.Daemon.FileSystem do
   def upload(local_file_path, dest_dir_id, file_name) do
     with :ok <- check_upload_quota(local_file_path),
          {:ok, file_meta, stream} <- Packer.process_file_stream(local_file_path),
-         {:ok, file_uuid} <- FileSystem.put_file(dest_dir_id, file_name, file_meta) do
+         {:ok, size} <- get_file_size(local_file_path),
+         {:ok, checksum} <- get_file_checksum(local_file_path),
+         mime = get_mime_type(local_file_path),
+         mapped_meta = %{size: size, checksum: checksum, mime: mime},
+         {:ok, file_uuid} <- FileSystem.put_file(dest_dir_id, file_name, mapped_meta) do
       upload_chunks(file_uuid, file_meta, stream)
     end
   end
@@ -121,6 +125,39 @@ defmodule Dust.Daemon.FileSystem do
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  defp get_file_size(path) do
+    case File.stat(path) do
+      {:ok, %File.Stat{size: size}} -> {:ok, size}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp get_file_checksum(path) do
+    case File.open(path, [:read, :binary]) do
+      {:ok, file} ->
+        hash =
+          IO.stream(file, 2048)
+          |> Enum.reduce(:crypto.hash_init(:sha256), fn chunk, acc ->
+            :crypto.hash_update(acc, chunk)
+          end)
+          |> :crypto.hash_final()
+          |> Base.encode16(case: :lower)
+
+        File.close(file)
+        {:ok, hash}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp get_mime_type(path) do
+    case System.cmd("file", ["-b", "--mime-type", path]) do
+      {mime, 0} -> String.trim(mime)
+      _ -> "application/octet-stream"
     end
   end
 
