@@ -171,7 +171,12 @@ defmodule Dust.Daemon.RepairScheduler do
           node()
         ) :: non_neg_integer()
   defp sweep_under_replication(_valid_keys, online_nodes, me) do
-    replication_target = Config.replication_factor() + 1
+    replication_factor = Config.replication_factor()
+    total_shards = Config.total_shards()
+    num_nodes = max(length(online_nodes) + 1, 1)
+
+    # How many shards of a chunk a node should ideally hold at most
+    max_local_shards = max(1, ceil(total_shards * replication_factor / num_nodes))
     online_set = MapSet.new([me | online_nodes])
     referenced_chunks = build_referenced_chunks()
 
@@ -181,27 +186,47 @@ defmodule Dust.Daemon.RepairScheduler do
       |> MapSet.new()
 
     referenced_chunks
-    |> Enum.reduce(0, fn chunk_hash, total_cloned ->
+    |> Enum.reduce(0, fn chunk_hash, total_cloned_outer ->
       shard_map = ShardMap.get_shards(chunk_hash)
 
-      shard_map
-      |> Enum.reduce(total_cloned, fn {shard_index, %{nodes: holders}}, cloned ->
-        online_holders =
-          holders
-          |> MapSet.intersection(online_set)
+      # Calculate node_loads: how many shards of this chunk each node holds
+      initial_loads =
+        shard_map
+        |> Enum.flat_map(fn {_idx, %{nodes: holders}} -> MapSet.to_list(holders) end)
+        |> Enum.frequencies()
 
-        online_count = MapSet.size(online_holders)
-        already_local = MapSet.member?(local_keys_set, {chunk_hash, shard_index})
+      initial_my_load = Map.get(initial_loads, me, 0)
 
-        if online_count < replication_target and not already_local do
-          case clone_shard(chunk_hash, shard_index, online_holders, me) do
-            :ok -> cloned + 1
-            :skip -> cloned
+      {cloned_for_chunk, _final_load} =
+        shard_map
+        |> Enum.reduce({0, initial_my_load}, fn {shard_index, %{nodes: holders}},
+                                                {cloned, my_load} ->
+          online_holders = MapSet.intersection(holders, online_set)
+          online_count = MapSet.size(online_holders)
+          already_local = MapSet.member?(local_keys_set, {chunk_hash, shard_index})
+
+          if not already_local do
+            under_replicated = online_count < replication_factor
+
+            rebalance =
+              online_count == replication_factor and
+                my_load < max_local_shards and
+                Enum.any?(online_holders, fn n -> Map.get(initial_loads, n, 0) > max_local_shards end)
+
+            if under_replicated or rebalance do
+              case clone_shard(chunk_hash, shard_index, online_holders, me) do
+                :ok -> {cloned + 1, my_load + 1}
+                :skip -> {cloned, my_load}
+              end
+            else
+              {cloned, my_load}
+            end
+          else
+            {cloned, my_load}
           end
-        else
-          cloned
-        end
-      end)
+        end)
+
+      total_cloned_outer + cloned_for_chunk
     end)
   end
 

@@ -140,36 +140,64 @@ defmodule Dust.Daemon.GarbageCollector do
   # ── Phase 2: Replication Sweep ──────────────────────────────────────────
 
   # Removes local copies of shards that are sufficiently replicated on other
-  # online nodes.
+  # online nodes, using a deterministic tie-breaker to prevent simultaneous
+  # mass-evictions and to aggressively penalize over-concentrated nodes.
   @spec sweep_replicas([{String.t(), non_neg_integer()}]) :: non_neg_integer()
   defp sweep_replicas(local_keys) do
     replication_factor = Config.replication_factor()
-    online_nodes = MapSet.new(NodeRegistry.online_nodes())
+    online_nodes_list = NodeRegistry.online_nodes()
     me = node()
+    online_set = MapSet.new([me | online_nodes_list])
 
-    Enum.reduce(local_keys, 0, fn {chunk_hash, shard_index}, count ->
+    # Group local shards by chunk_hash to iterate chunk by chunk
+    local_by_chunk =
+      local_keys
+      |> Enum.group_by(fn {chunk_hash, _} -> chunk_hash end, fn {_, shard_index} ->
+        shard_index
+      end)
+
+    Enum.reduce(local_by_chunk, 0, fn {chunk_hash, local_indices}, total_removed ->
       shard_map = ShardMap.get_shards(chunk_hash)
 
-      case Map.get(shard_map, shard_index) do
-        nil ->
-          # Shard not tracked in manifest — skip (will be caught as orphan
-          # on the next sweep if the chunk is also unreferenced).
-          count
+      # Determine global node loads for this chunk to break ties deterministically
+      node_loads =
+        shard_map
+        |> Enum.flat_map(fn {_idx, %{nodes: holders}} -> MapSet.to_list(holders) end)
+        |> Enum.frequencies()
 
-        %{nodes: holders} ->
-          other_online_holders =
-            holders
-            |> MapSet.delete(me)
-            |> MapSet.intersection(online_nodes)
-            |> MapSet.size()
+      Enum.reduce(local_indices, total_removed, fn shard_index, removed ->
+        case Map.get(shard_map, shard_index) do
+          nil ->
+            # Shard not tracked in manifest — skip (will be caught as orphan
+            # on the next sweep if the chunk is also unreferenced).
+            removed
 
-          if other_online_holders >= replication_factor do
-            delete_local_shard(chunk_hash, shard_index, :over_replicated)
-            count + 1
-          else
-            count
-          end
-      end
+          %{nodes: holders} ->
+            online_holders = MapSet.intersection(holders, online_set)
+            online_count = MapSet.size(online_holders)
+
+            if online_count > replication_factor do
+              excess_count = online_count - replication_factor
+
+              # Rank nodes: highest load first, use node name as tie-breaker
+              drop_candidates =
+                online_holders
+                |> Enum.map(fn n -> {n, Map.get(node_loads, n, 0)} end)
+                |> Enum.sort_by(fn {n, load} -> {-load, n} end, :asc)
+                |> Enum.take(excess_count)
+                |> Enum.map(fn {n, _} -> n end)
+
+              if me in drop_candidates do
+                delete_local_shard(chunk_hash, shard_index, :over_replicated)
+                removed + 1
+              else
+                removed
+              end
+            else
+              removed
+            end
+        end
+      end)
     end)
   end
 
