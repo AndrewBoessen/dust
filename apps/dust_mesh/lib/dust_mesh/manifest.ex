@@ -163,6 +163,31 @@ defmodule Dust.Mesh.Manifest.ShardMap do
     :ok
   end
 
+  @doc """
+  Returns a grouped map of all shards: `%{chunk_hash => %{shard_index => %ShardMap{nodes: ...}}}`.
+  Avoids repeated crdt_to_map iterations.
+  """
+  @spec all_grouped() :: %{String.t() => %{non_neg_integer() => t()}}
+  def all_grouped do
+    crdt_to_map()
+    |> Enum.reduce(%{}, fn {k, _v}, acc ->
+      case String.split(k, ":") do
+        [chunk_hash, shard_idx_str, node_str] ->
+          shard_index = String.to_integer(shard_idx_str)
+          node = String.to_atom(node_str)
+
+          Map.update(acc, chunk_hash, %{shard_index => %__MODULE__{nodes: MapSet.new([node])}}, fn chunk_map ->
+            Map.update(chunk_map, shard_index, %__MODULE__{nodes: MapSet.new([node])}, fn existing ->
+              %{existing | nodes: MapSet.put(existing.nodes, node)}
+            end)
+          end)
+
+        _ ->
+          acc
+      end
+    end)
+  end
+
   @doc "Returns the full shard map as a plain Elixir map (for raw debugging)."
   @spec all() :: map()
   def all, do: crdt_to_map()
@@ -264,6 +289,15 @@ defmodule Dust.Mesh.Manifest do
   @spec get_shard_locations(String.t()) :: %{non_neg_integer() => ShardMap.t()}
   def get_shard_locations(chunk_hash) when is_binary(chunk_hash) do
     ShardMap.get_shards(chunk_hash)
+  end
+
+  @doc """
+  Returns all shard locations for all chunks in the entire cluster as a
+  grouped map: `%{chunk_hash => %{shard_index => %ShardMap{nodes: MapSet}}}`.
+  """
+  @spec get_all_shard_locations() :: %{String.t() => %{non_neg_integer() => ShardMap.t()}}
+  def get_all_shard_locations do
+    ShardMap.all_grouped()
   end
 
   @doc """

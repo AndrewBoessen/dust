@@ -101,7 +101,7 @@ defmodule Dust.Daemon.FileSystem do
          mime = get_mime_type(local_file_path),
          mapped_meta = %{size: size, checksum: checksum, mime: mime},
          {:ok, file_uuid} <- FileSystem.put_file(dest_dir_id, file_name, mapped_meta) do
-      upload_chunks(file_uuid, file_meta, stream)
+      upload_chunks(file_uuid, file_meta, stream, size)
     end
   end
 
@@ -165,14 +165,13 @@ defmodule Dust.Daemon.FileSystem do
 
   # Streams through all chunks, encoding and storing each one sequentially.
   # On success, commits the full file manifest. On failure, cleans up.
-  defp upload_chunks(file_uuid, file_meta, stream) do
-    # Materialize the stream to get total count for progress reporting
-    chunks = Enum.to_list(stream)
-    total_chunks = length(chunks)
+  defp upload_chunks(file_uuid, file_meta, stream, file_size) do
+    # Calculate total chunks mathematically to avoid materializing the stream
+    total_chunks = if file_size == 0, do: 0, else: div(file_size + 4_194_303, 4_194_304)
 
     result =
-      chunks
-      |> Enum.with_index()
+      stream
+      |> Stream.with_index()
       |> Enum.reduce_while({:ok, []}, fn {{chunk_meta, binary}, idx}, {:ok, acc} ->
         case encode_and_store_chunk(chunk_meta, binary) do
           {:ok, stored_meta} ->
@@ -300,13 +299,14 @@ defmodule Dust.Daemon.FileSystem do
   def download(file_uuid, local_dest_path) do
     with {:ok, chunk_hashes, file_meta} <- Manifest.get_file(file_uuid),
          {:ok, file_key} <- Crypto.decrypt_file_key(file_meta) do
-      stream_chunks_to_file(file_uuid, chunk_hashes, file_key, local_dest_path)
+      all_locations = Manifest.get_all_shard_locations()
+      stream_chunks_to_file(file_uuid, chunk_hashes, file_key, local_dest_path, all_locations)
     end
   end
 
   # ── Chunk Streaming ────────────────────────────────────────────────────
 
-  defp stream_chunks_to_file(file_uuid, chunk_hashes, file_key, dest_path) do
+  defp stream_chunks_to_file(file_uuid, chunk_hashes, file_key, dest_path, all_locations) do
     total_chunks = length(chunk_hashes)
     file = File.open!(dest_path, [:write, :binary])
 
@@ -314,7 +314,7 @@ defmodule Dust.Daemon.FileSystem do
       chunk_hashes
       |> Enum.with_index()
       |> Enum.reduce_while(:ok, fn {chunk_hash, idx}, :ok ->
-        case download_and_write_chunk(chunk_hash, file_key, file) do
+        case download_and_write_chunk(chunk_hash, file_key, file, all_locations) do
           :ok ->
             broadcast_download_progress(file_uuid, idx + 1, total_chunks)
             {:cont, :ok}
@@ -332,7 +332,7 @@ defmodule Dust.Daemon.FileSystem do
     end
   end
 
-  defp download_and_write_chunk(chunk_hash, file_key, file) do
+  defp download_and_write_chunk(chunk_hash, file_key, file, all_locations) do
     k = Config.erasure_k()
     m = Config.erasure_m()
 
@@ -341,7 +341,7 @@ defmodule Dust.Daemon.FileSystem do
         {:error, :chunk_meta_not_found}
 
       %Crypto.ChunkMeta{} = chunk_meta ->
-        shard_locations = Manifest.get_shard_locations(chunk_hash)
+        shard_locations = Map.get(all_locations, chunk_hash, %{})
 
         case fetch_k_shards(chunk_hash, shard_locations, k, m) do
           {:ok, shards} ->

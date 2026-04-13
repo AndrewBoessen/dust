@@ -149,6 +149,9 @@ defmodule Dust.Daemon.GarbageCollector do
     me = node()
     online_set = MapSet.new([me | online_nodes_list])
 
+    # Pre-fetch the grouped state of the entire cluster's shards in O(N)
+    all_grouped_shards = ShardMap.all_grouped()
+
     # Group local shards by chunk_hash to iterate chunk by chunk
     local_by_chunk =
       local_keys
@@ -157,7 +160,7 @@ defmodule Dust.Daemon.GarbageCollector do
       end)
 
     Enum.reduce(local_by_chunk, 0, fn {chunk_hash, local_indices}, total_removed ->
-      shard_map = ShardMap.get_shards(chunk_hash)
+      shard_map = Map.get(all_grouped_shards, chunk_hash, %{})
 
       # Determine global node loads for this chunk to break ties deterministically
       node_loads =

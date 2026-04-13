@@ -117,11 +117,14 @@ defmodule Dust.Daemon.RepairScheduler do
     # Phase 4 runs before 2-3 so stale entries are cleaned first
     stale_entries_cleaned = sweep_stale_manifest(all_registry)
 
+    # Pre-fetch the grouped state of the entire cluster's shards in O(N)
+    all_grouped_shards = ShardMap.all_grouped()
+
     # Phase 2: Under-replication repair (clone)
-    shards_cloned = sweep_under_replication(valid_keys, online_nodes, me)
+    shards_cloned = sweep_under_replication(valid_keys, online_nodes, me, all_grouped_shards)
 
     # Phase 3: Missing shard reconstruction
-    shards_reconstructed = sweep_reconstruction(online_nodes, me)
+    shards_reconstructed = sweep_reconstruction(online_nodes, me, all_grouped_shards)
 
     Logger.info(
       "RepairScheduler: sweep complete — " <>
@@ -168,9 +171,10 @@ defmodule Dust.Daemon.RepairScheduler do
   @spec sweep_under_replication(
           [{String.t(), non_neg_integer()}],
           [node()],
-          node()
+          node(),
+          map()
         ) :: non_neg_integer()
-  defp sweep_under_replication(_valid_keys, online_nodes, me) do
+  defp sweep_under_replication(_valid_keys, online_nodes, me, all_grouped_shards) do
     replication_factor = Config.replication_factor()
     total_shards = Config.total_shards()
     num_nodes = max(length(online_nodes) + 1, 1)
@@ -187,7 +191,7 @@ defmodule Dust.Daemon.RepairScheduler do
 
     referenced_chunks
     |> Enum.reduce(0, fn chunk_hash, total_cloned_outer ->
-      shard_map = ShardMap.get_shards(chunk_hash)
+      shard_map = Map.get(all_grouped_shards, chunk_hash, %{})
 
       # Calculate node_loads: how many shards of this chunk each node holds
       initial_loads =
@@ -281,8 +285,8 @@ defmodule Dust.Daemon.RepairScheduler do
 
   # ── Phase 3: Missing Shard Reconstruction ───────────────────────────────
 
-  @spec sweep_reconstruction([node()], node()) :: non_neg_integer()
-  defp sweep_reconstruction(online_nodes, me) do
+  @spec sweep_reconstruction([node()], node(), map()) :: non_neg_integer()
+  defp sweep_reconstruction(online_nodes, me, all_grouped_shards) do
     budget = Config.max_reconstruct_per_sweep()
     k = Config.erasure_k()
     m = Config.erasure_m()
@@ -295,7 +299,7 @@ defmodule Dust.Daemon.RepairScheduler do
       if reconstructed >= budget do
         {:halt, reconstructed}
       else
-        shard_map = ShardMap.get_shards(chunk_hash)
+        shard_map = Map.get(all_grouped_shards, chunk_hash, %{})
 
         # Find shard indices with zero online holders
         missing_indices = find_missing_indices(shard_map, online_set, total)
