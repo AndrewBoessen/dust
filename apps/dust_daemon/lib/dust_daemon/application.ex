@@ -11,7 +11,6 @@ defmodule DustDaemon.Application do
       {Registry, keys: :duplicate, name: Dust.Daemon.Registry},
       {Task.Supervisor, name: Dust.Daemon.JobQueue},
       Dust.Daemon.Bootstrapper,
-      Dust.Daemon.BandwidthThrottler,
       Dust.Daemon.DiskManager,
       Dust.Daemon.GarbageCollector,
       Dust.Daemon.RepairScheduler
