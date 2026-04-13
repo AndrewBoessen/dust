@@ -94,11 +94,13 @@ defmodule Dust.Daemon.FileSystem do
              | :dir_not_found
              | :insufficient_disk_quota}
   def upload(local_file_path, dest_dir_id, file_name) do
-    with :ok <- check_upload_quota(local_file_path),
-         {:ok, file_meta, stream} <- Packer.process_file_stream(local_file_path),
-         {:ok, size} <- get_file_size(local_file_path),
-         {:ok, checksum} <- get_file_checksum(local_file_path),
-         mime = get_mime_type(local_file_path),
+    expanded_path = Path.expand(local_file_path)
+
+    with :ok <- check_upload_quota(expanded_path),
+         {:ok, file_meta, stream} <- Packer.process_file_stream(expanded_path),
+         {:ok, size} <- get_file_size(expanded_path),
+         {:ok, checksum} <- get_file_checksum(expanded_path),
+         mime = get_mime_type(expanded_path),
          mapped_meta = %{size: size, checksum: checksum, mime: mime},
          {:ok, file_uuid} <- FileSystem.put_file(dest_dir_id, file_name, mapped_meta) do
       upload_chunks(file_uuid, file_meta, stream, size)
@@ -297,10 +299,12 @@ defmodule Dust.Daemon.FileSystem do
              | :decode_failed
              | term()}
   def download(file_uuid, local_dest_path) do
+    expanded_path = Path.expand(local_dest_path)
+
     with {:ok, chunk_hashes, file_meta} <- Manifest.get_file(file_uuid),
          {:ok, file_key} <- Crypto.decrypt_file_key(file_meta) do
       all_locations = Manifest.get_all_shard_locations()
-      stream_chunks_to_file(file_uuid, chunk_hashes, file_key, local_dest_path, all_locations)
+      stream_chunks_to_file(file_uuid, chunk_hashes, file_key, expanded_path, all_locations)
     end
   end
 
