@@ -104,6 +104,15 @@ defmodule Dust.Daemon.RepairScheduler do
   # ── Core Sweep Logic ────────────────────────────────────────────────────
 
   defp do_sweep(state) do
+    if not Dust.Daemon.Readiness.ready?() do
+      Logger.warning("RepairScheduler: skipping sweep — system not yet bootstrapped")
+      state
+    else
+      do_sweep_impl(state)
+    end
+  end
+
+  defp do_sweep_impl(state) do
     Logger.debug("RepairScheduler: starting sweep.")
 
     local_keys = Storage.list_local_shard_keys()
