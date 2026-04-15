@@ -163,6 +163,31 @@ defmodule Dust.Mesh.Manifest.ShardMap do
     :ok
   end
 
+  @doc """
+  Returns a grouped map of all shards: `%{chunk_hash => %{shard_index => %ShardMap{nodes: ...}}}`.
+  Avoids repeated crdt_to_map iterations.
+  """
+  @spec all_grouped() :: %{String.t() => %{non_neg_integer() => t()}}
+  def all_grouped do
+    crdt_to_map()
+    |> Enum.reduce(%{}, fn {k, _v}, acc ->
+      case String.split(k, ":") do
+        [chunk_hash, shard_idx_str, node_str] ->
+          shard_index = String.to_integer(shard_idx_str)
+          node = String.to_atom(node_str)
+
+          Map.update(acc, chunk_hash, %{shard_index => %__MODULE__{nodes: MapSet.new([node])}}, fn chunk_map ->
+            Map.update(chunk_map, shard_index, %__MODULE__{nodes: MapSet.new([node])}, fn existing ->
+              %{existing | nodes: MapSet.put(existing.nodes, node)}
+            end)
+          end)
+
+        _ ->
+          acc
+      end
+    end)
+  end
+
   @doc "Returns the full shard map as a plain Elixir map (for raw debugging)."
   @spec all() :: map()
   def all, do: crdt_to_map()
@@ -203,7 +228,7 @@ defmodule Dust.Mesh.Manifest do
   @doc """
   Indexes a file and all of its chunks into the manifest.
 
-  Each chunk from `chunk_meta_stream` is stored in the `ChunkIndex`, and the 
+  Each chunk from `chunk_meta_stream` is stored in the `ChunkIndex`, and the
   resulting chunk ID list is persisted alongside the file's encrypted key in `FileIndex`.
   """
   @spec store_file_stream(String.t(), FileMeta.t(), Enumerable.t(ChunkMeta.t())) ::
@@ -267,6 +292,32 @@ defmodule Dust.Mesh.Manifest do
   end
 
   @doc """
+  Returns all shard locations for all chunks in the entire cluster as a
+  grouped map: `%{chunk_hash => %{shard_index => %ShardMap{nodes: MapSet}}}`.
+  """
+  @spec get_all_shard_locations() :: %{String.t() => %{non_neg_integer() => ShardMap.t()}}
+  def get_all_shard_locations do
+    ShardMap.all_grouped()
+  end
+
+  @doc """
+  Returns the chunks making up the file and file metadata
+
+  Returns `{:ok, [String.t()], Dust.Core.Crypto.FileMeta.t()}` where each element is a chunk hash or error if file uuid not found
+  """
+  @spec get_file(String.t()) ::
+          {:ok, [String.t()], Dust.Core.Crypto.FileMeta.t()} | {:error, :file_not_found}
+  def get_file(file_uuid) when is_binary(file_uuid) do
+    case FileIndex.get(file_uuid) do
+      %FileIndex{chunks: chunks, file_meta: meta} ->
+        {:ok, chunks, meta}
+
+      nil ->
+        {:error, :file_not_found}
+    end
+  end
+
+  @doc """
   Removes a file and verifies if its chunks are orphaned.
 
   If no other surviving files reference those chunks in the FileIndex,
@@ -283,7 +334,7 @@ defmodule Dust.Mesh.Manifest do
         FileIndex.delete(file_uuid)
 
         # Collect global references remaining across the system
-        live_chunks = 
+        live_chunks =
           FileIndex.all()
           |> Enum.flat_map(fn {_id, f} -> f.chunks end)
           |> MapSet.new()
@@ -296,6 +347,17 @@ defmodule Dust.Mesh.Manifest do
         end)
 
         :ok
+    end
+  end
+
+  @doc """
+  Returns the `ChunkMeta` for a given chunk hash, or `nil` if not found.
+  """
+  @spec get_chunk_meta(String.t()) :: ChunkMeta.t() | nil
+  def get_chunk_meta(chunk_hash) when is_binary(chunk_hash) do
+    case ChunkIndex.get(chunk_hash) do
+      %ChunkIndex{chunk_meta: meta} -> meta
+      nil -> nil
     end
   end
 

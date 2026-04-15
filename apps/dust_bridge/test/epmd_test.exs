@@ -3,6 +3,12 @@ defmodule Dust.Bridge.EPMDTest do
 
   alias Dust.Bridge.EPMD
 
+  setup_all do
+    Application.stop(:dust_bridge)
+
+    on_exit(fn -> Application.ensure_all_started(:dust_bridge) end)
+  end
+
   # ── Stub functions required by :erl_epmd ──────────────────────────────
 
   describe "start_link/0" do

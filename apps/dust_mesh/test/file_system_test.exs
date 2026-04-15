@@ -1,6 +1,8 @@
 defmodule Dust.Mesh.FileSystemTest do
   use ExUnit.Case, async: false
 
+  @moduletag :tmp_dir
+
   alias Dust.Mesh.FileSystem
 
   # ── Helpers ──────────────────────────────────────────────────────────────
@@ -16,15 +18,28 @@ defmodule Dust.Mesh.FileSystemTest do
     start_supervised!(Dust.Mesh.FileSystem.FileMap)
   end
 
-  defp clean_data_dir! do
-    test_db_path = Dust.Utilities.File.mesh_db_dir()
-    File.rm_rf(test_db_path)
+  setup_all do
+    Application.stop(:dust_mesh)
+
+    on_exit(fn ->
+      Application.ensure_all_started(:dust_mesh)
+    end)
   end
 
-  setup do
-    clean_data_dir!()
+  setup %{tmp_dir: tmp_dir} do
+    old_env = Application.get_env(:dust_utilities, :config, %{})
+    Application.put_env(:dust_utilities, :config, %{persist_dir: tmp_dir})
     start_file_system!()
-    on_exit(fn -> clean_data_dir!() end)
+
+    on_exit(fn ->
+      if old_env do
+        Application.put_env(:dust_utilities, :config, old_env)
+      else
+        Application.delete_env(:dust_utilities, :config)
+      end
+    end)
+
+    :ok
   end
 
   # ── mkdir/2 ──────────────────────────────────────────────────────────────
@@ -250,8 +265,6 @@ defmodule Dust.Mesh.FileSystemTest do
 
       assert {:error, :not_found} = FileSystem.mv_file("missing", src, dst)
     end
-
-
   end
 
   # ── rm_file/2 ───────────────────────────────────────────────────────────

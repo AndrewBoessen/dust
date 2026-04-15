@@ -129,8 +129,8 @@ defmodule Dust.Core.Fitness do
     end
 
     @doc "Get the model for a node, returning a fresh default if unseen."
-    @spec get(binary()) :: NodeEMA.t()
-    def get(node_id) do
+    @spec get(node()) :: NodeEMA.t()
+    def get(node_id) when is_atom(node_id) do
       case :ets.lookup(@table, node_id) do
         [{^node_id, model}] -> model
         [] -> NodeEMA.new()
@@ -143,8 +143,8 @@ defmodule Dust.Core.Fitness do
     Serialised through the GenServer to prevent concurrent writes
     from producing inconsistent ETS or disk state.
     """
-    @spec update(binary(), Dust.Core.Fitness.Observation.t()) :: NodeEMA.t()
-    def update(node_id, observation) do
+    @spec update(node(), Dust.Core.Fitness.Observation.t()) :: NodeEMA.t()
+    def update(node_id, observation) when is_atom(node_id) do
       GenServer.call(__MODULE__, {:update, node_id, observation})
     end
 
@@ -196,8 +196,8 @@ defmodule Dust.Core.Fitness do
   been interacted with return the default model score. Only online peers
   should be scored — availability is tracked separately.
   """
-  @spec score(binary()) :: float()
-  def score(node_id) do
+  @spec score(node()) :: float()
+  def score(node_id) when is_atom(node_id) do
     node_id
     |> ModelStore.get()
     |> NodeEMA.score()
@@ -208,8 +208,8 @@ defmodule Dust.Core.Fitness do
 
   Returns the updated model.
   """
-  @spec record(binary(), Observation.t()) :: NodeEMA.t()
-  def record(node_id, observation) do
+  @spec record(node(), Observation.t()) :: NodeEMA.t()
+  def record(node_id, observation) when is_atom(node_id) do
     ModelStore.update(node_id, observation)
   end
 end

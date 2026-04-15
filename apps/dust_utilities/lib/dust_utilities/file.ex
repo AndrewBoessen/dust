@@ -3,10 +3,7 @@ defmodule Dust.Utilities.File do
   Centralized file path management for persistent data structures.
 
   All persistent paths in the Dust umbrella resolve through this module.
-  The root directory defaults to `~/.dust` but is configurable via the
-  `:dust_utilities` application environment:
-
-      config :dust_utilities, persist_dir: "/custom/path"
+  The root directory is configured via `Dust.Utilities.Config`.
 
   ## Directory layout
 
@@ -43,11 +40,7 @@ defmodule Dust.Utilities.File do
   """
   @spec persist_dir() :: Path.t()
   def persist_dir do
-    Application.get_env(
-      :dust_utilities,
-      :persist_dir,
-      Path.join([System.user_home!(), ".dust"])
-    )
+    Dust.Utilities.Config.persist_dir()
   end
 
   @doc """

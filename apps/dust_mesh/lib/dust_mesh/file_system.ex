@@ -181,11 +181,13 @@ defmodule Dust.Mesh.FileSystem do
   @spec rename_dir(uuid(), String.t()) :: :ok | {:error, :not_found | :crdt_unavailable}
   def rename_dir(dir_id, new_name) when is_binary(dir_id) and is_binary(new_name) do
     case DirMap.get(dir_id) do
-      nil -> {:error, :not_found}
+      nil ->
+        {:error, :not_found}
+
       entry ->
         case DirMap.put(dir_id, %{entry | name: new_name}) do
-           {:error, :crdt_unavailable} -> {:error, :crdt_unavailable}
-           :ok -> :ok
+          {:error, :crdt_unavailable} -> {:error, :crdt_unavailable}
+          :ok -> :ok
         end
     end
   end
@@ -206,7 +208,7 @@ defmodule Dust.Mesh.FileSystem do
       _entry ->
         has_dirs = DirMap.all() |> Enum.any?(fn {_id, dir} -> dir.parent_id == dir_id end)
         has_files = FileMap.all() |> Enum.any?(fn {_id, file} -> file.dir_id == dir_id end)
-        
+
         if has_dirs or has_files do
           {:error, :not_empty}
         else
@@ -225,11 +227,13 @@ defmodule Dust.Mesh.FileSystem do
 
   Returns `{:ok, file_id}`.
   """
-  @spec put_file(uuid(), String.t(), map()) ::
+  @spec put_file(uuid(), String.t(), map() | struct()) ::
           {:ok, uuid()} | {:error, :dir_not_found | :crdt_unavailable}
   def put_file(dir_id, name, metadata \\ %{})
 
   def put_file(dir_id, name, metadata) when is_binary(dir_id) and is_binary(name) do
+    clean_meta = if is_struct(metadata), do: Map.from_struct(metadata), else: metadata
+
     case DirMap.get(dir_id) do
       nil ->
         {:error, :dir_not_found}
@@ -238,7 +242,7 @@ defmodule Dust.Mesh.FileSystem do
         id = generate_uuid()
 
         file_attrs =
-          metadata
+          clean_meta
           |> Map.put(:name, name)
           |> Map.put(:dir_id, dir_id)
           |> Map.put(:created_at, DateTime.utc_now())

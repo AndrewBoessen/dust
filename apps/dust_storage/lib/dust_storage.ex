@@ -32,18 +32,15 @@ defmodule Dust.Storage do
 
   @doc """
   Store an encrypted shard binary under its composite key.
-
-  ## Parameters
-
-    * `chunk_hash` — hex-encoded SHA-256 hash identifying the chunk
-    * `shard_index` — 0-based shard index (0..K+M-1)
-    * `encrypted_binary` — the raw encrypted shard payload
   """
   @spec put_shard(String.t(), non_neg_integer(), binary()) :: :ok | {:error, term()}
   def put_shard(chunk_hash, shard_index, encrypted_binary)
       when is_binary(chunk_hash) and is_integer(shard_index) and shard_index >= 0 and
              is_binary(encrypted_binary) do
-    RocksBackend.put(key(chunk_hash, shard_index), encrypted_binary)
+    hash = :crypto.hash(:sha256, encrypted_binary)
+    payload_to_store = encrypted_binary <> hash
+
+    RocksBackend.put(key(chunk_hash, shard_index), payload_to_store)
   end
 
   @doc """
@@ -52,10 +49,56 @@ defmodule Dust.Storage do
   Returns `{:ok, binary}` on success, or `{:error, :not_found}` if the
   shard is not stored locally.
   """
-  @spec get_shard(String.t(), non_neg_integer()) :: {:ok, binary()} | {:error, :not_found}
+  @spec get_shard(String.t(), non_neg_integer()) ::
+          {:ok, binary()} | {:error, :not_found | :integrity_check_failed | :invalid_format}
   def get_shard(chunk_hash, shard_index)
       when is_binary(chunk_hash) and is_integer(shard_index) and shard_index >= 0 do
-    RocksBackend.get(key(chunk_hash, shard_index))
+    case RocksBackend.get(key(chunk_hash, shard_index)) do
+      {:ok, stored_value} when byte_size(stored_value) >= 32 ->
+        payload_size = byte_size(stored_value) - 32
+        <<payload::binary-size(payload_size), stored_hash::binary-32>> = stored_value
+
+        if :crypto.hash(:sha256, payload) == stored_hash do
+          {:ok, payload}
+        else
+          {:error, :integrity_check_failed}
+        end
+
+      {:ok, _stored_value} ->
+        {:error, :invalid_format}
+
+      error ->
+        error
+    end
+  end
+
+  @doc """
+  Verifies the local integrity of a shard without returning its binary payload.
+
+  Returns `:ok` if the shard exists and its checksum matches, `{:error, :not_found}` if missing,
+  or `{:error, :integrity_check_failed}` if corrupted.
+  """
+  @spec verify_shard(String.t(), non_neg_integer()) ::
+          :ok | {:error, :not_found | :integrity_check_failed | :invalid_format}
+  def verify_shard(chunk_hash, shard_index)
+      when is_binary(chunk_hash) and is_integer(shard_index) and shard_index >= 0 do
+    case RocksBackend.get(key(chunk_hash, shard_index)) do
+      {:ok, stored_value} when byte_size(stored_value) >= 32 ->
+        payload_size = byte_size(stored_value) - 32
+        <<payload::binary-size(payload_size), stored_hash::binary-32>> = stored_value
+
+        if :crypto.hash(:sha256, payload) == stored_hash do
+          :ok
+        else
+          {:error, :integrity_check_failed}
+        end
+
+      {:ok, _stored_value} ->
+        {:error, :invalid_format}
+
+      error ->
+        error
+    end
   end
 
   @doc """
@@ -86,12 +129,55 @@ defmodule Dust.Storage do
   end
 
   @doc """
+  Returns the approximate size in bytes of a locally stored shard,
+  or `nil` if the shard does not exist.
+
+  Reads the raw value from RocksDB and strips the 32-byte checksum
+  trailer — no integrity verification is performed, making this a
+  fast path for disk-quota estimation in the repair scheduler.
+  """
+  @spec shard_size(String.t(), non_neg_integer()) :: non_neg_integer() | nil
+  def shard_size(chunk_hash, shard_index)
+      when is_binary(chunk_hash) and is_integer(shard_index) and shard_index >= 0 do
+    case RocksBackend.get(key(chunk_hash, shard_index)) do
+      {:ok, stored_value} when byte_size(stored_value) >= 32 ->
+        byte_size(stored_value) - 32
+
+      {:ok, stored_value} ->
+        byte_size(stored_value)
+
+      {:error, :not_found} ->
+        nil
+    end
+  end
+
+  @doc """
   Check if a shard exists locally without reading the full binary.
   """
   @spec has_shard?(String.t(), non_neg_integer()) :: boolean()
   def has_shard?(chunk_hash, shard_index)
       when is_binary(chunk_hash) and is_integer(shard_index) and shard_index >= 0 do
     RocksBackend.has_key?(key(chunk_hash, shard_index))
+  end
+
+  @doc """
+  Returns all locally-stored shard keys as `{chunk_hash, shard_index}` tuples.
+
+  Iterates over RocksDB keys without reading values, making it safe for
+  large stores. Used by the garbage collector to reconcile local storage
+  against the distributed manifest.
+  """
+  @spec list_local_shard_keys() :: [{String.t(), non_neg_integer()}]
+  def list_local_shard_keys do
+    RocksBackend.fold_keys(
+      fn key, acc ->
+        case String.split(key, ":", parts: 2) do
+          [chunk_hash, idx_str] -> [{chunk_hash, String.to_integer(idx_str)} | acc]
+          _ -> acc
+        end
+      end,
+      []
+    )
   end
 
   # ── Private ────────────────────────────────────────────────────────────

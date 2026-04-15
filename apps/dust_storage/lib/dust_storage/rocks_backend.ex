@@ -58,6 +58,12 @@ defmodule Dust.Storage.RocksBackend do
     GenServer.call(@name, {:has_key, key})
   end
 
+  @doc false
+  @spec fold_keys((String.t(), term() -> term()), term()) :: term()
+  def fold_keys(fun, acc0) when is_function(fun, 2) do
+    GenServer.call(@name, {:fold_keys, fun, acc0}, :infinity)
+  end
+
   # ── GenServer callbacks ────────────────────────────────────────────────
 
   @spec start_link(keyword()) :: GenServer.on_start()
@@ -128,6 +134,11 @@ defmodule Dust.Storage.RocksBackend do
         _ -> false
       end
 
+    {:reply, result, state}
+  end
+
+  def handle_call({:fold_keys, fun, acc0}, _from, %{db: db} = state) do
+    result = :rocksdb.fold_keys(db, fun, acc0, [])
     {:reply, result, state}
   end
 

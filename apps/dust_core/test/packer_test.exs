@@ -1,12 +1,21 @@
 defmodule Dust.Core.PackerTest do
   use ExUnit.Case, async: false
 
+  @moduletag :tmp_dir
+
   alias Dust.Core.Packer
   alias Dust.Core.Crypto.{FileMeta, ChunkMeta}
 
-  @tmp_dir System.tmp_dir!()
+  setup_all do
+    Application.stop(:dust_core)
 
-  setup do
+    on_exit(fn -> Application.ensure_all_started(:dust_core) end)
+  end
+
+  setup %{tmp_dir: tmp_dir} do
+    old_env = Application.get_env(:dust_utilities, :config, %{})
+    Application.put_env(:dust_utilities, :config, %{persist_dir: tmp_dir})
+
     if Process.whereis(Dust.Core.Supervisor) do
       Supervisor.terminate_child(Dust.Core.Supervisor, Dust.Core.KeyStore)
       Supervisor.delete_child(Dust.Core.Supervisor, Dust.Core.KeyStore)
@@ -14,20 +23,31 @@ defmodule Dust.Core.PackerTest do
 
     _ = stop_supervised(Dust.Core.KeyStore)
 
-    key_path = Dust.Utilities.File.master_key_file()
-
-    File.rm(key_path)
-    start_supervised!({Dust.Core.KeyStore, [key_path: key_path]})
+    pid = start_supervised!(Dust.Core.KeyStore)
+    Mox.allow(Dust.Bridge.Mock, self(), pid)
+    Mox.stub(Dust.Bridge.Mock, :serve_secrets, fn _, _ -> :ok end)
     :ok = Dust.Core.KeyStore.unlock("test_password")
-    on_exit(fn -> File.rm(key_path) end)
+
+    on_exit(fn ->
+      if old_env do
+        Application.put_env(:dust_utilities, :config, old_env)
+      else
+        Application.delete_env(:dust_utilities, :config)
+      end
+    end)
   end
 
   # ── Helpers ─────────────────────────────────────────────────────────────
 
   defp write_tmp_file(name, content) do
-    path = Path.join(@tmp_dir, "dust_test_#{name}_#{System.unique_integer([:positive])}")
+    # Implicitly use the dynamically overridden persist_dir for the test process
+    path =
+      Path.join(
+        Dust.Utilities.File.persist_dir(),
+        "dust_test_#{name}_#{System.unique_integer([:positive])}"
+      )
+
     File.write!(path, content)
-    on_exit(fn -> File.rm(path) end)
     path
   end
 
@@ -100,7 +120,7 @@ defmodule Dust.Core.PackerTest do
     end
 
     test "returns {:error, :eisdir} for a directory" do
-      assert {:error, :eisdir} = Packer.process_file_stream(@tmp_dir)
+      assert {:error, :eisdir} = Packer.process_file_stream(System.tmp_dir!())
     end
 
     test "handles empty file" do

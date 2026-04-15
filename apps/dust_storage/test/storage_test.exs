@@ -11,8 +11,15 @@ defmodule Dust.StorageTest do
   setup_all do
     Application.stop(:dust_storage)
 
+    old_env = Application.get_env(:dust_utilities, :config, %{})
+
     on_exit(fn ->
-      Application.delete_env(:dust_utilities, :persist_dir)
+      if old_env do
+        Application.put_env(:dust_utilities, :config, old_env)
+      else
+        Application.delete_env(:dust_utilities, :config)
+      end
+
       Application.ensure_all_started(:dust_storage)
     end)
 
@@ -20,7 +27,7 @@ defmodule Dust.StorageTest do
   end
 
   setup %{tmp_dir: tmp_dir} do
-    Application.put_env(:dust_utilities, :persist_dir, tmp_dir)
+    Application.put_env(:dust_utilities, :config, %{persist_dir: tmp_dir})
 
     start_supervised!(Dust.Storage.RocksBackend)
 
@@ -61,6 +68,28 @@ defmodule Dust.StorageTest do
       assert {:ok, <<1>>} = Storage.get_shard("multi", 0)
       assert {:ok, <<2>>} = Storage.get_shard("multi", 1)
       assert {:ok, <<3>>} = Storage.get_shard("multi", 2)
+    end
+  end
+
+  # ── Bit-Rot / Integrity ────────────────────────────────────────────────
+
+  describe "bit-rot integrity checking" do
+    test "verify_shard/2 returns :ok for valid payload" do
+      data = <<4, 5, 6>>
+      assert :ok = Storage.put_shard("verify", 0, data)
+      assert :ok = Storage.verify_shard("verify", 0)
+    end
+
+    test "detects corrupted payload" do
+      data = <<1, 2, 3>>
+      # Intentionally incorrect 32-byte hash
+      bad_hash = <<0::256>>
+
+      # Simulate corruption by writing a bad hash manually to the RocksDB backend
+      Dust.Storage.RocksBackend.put("corrupt:0", data <> bad_hash)
+
+      assert {:error, :integrity_check_failed} = Storage.get_shard("corrupt", 0)
+      assert {:error, :integrity_check_failed} = Storage.verify_shard("corrupt", 0)
     end
   end
 

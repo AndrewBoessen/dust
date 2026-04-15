@@ -1,6 +1,8 @@
 defmodule Dust.Core.CryptoTest do
   use ExUnit.Case, async: false
 
+  @moduletag :tmp_dir
+
   alias Dust.Core.Crypto
   alias Dust.Core.Crypto.{FileMeta, ChunkMeta}
 
@@ -116,18 +118,31 @@ defmodule Dust.Core.CryptoTest do
   # ── Master-key helpers ──────────────────────────────────────────────────
 
   describe "encrypt_with_master/1 and decrypt_file_key/1" do
-    setup do
+    setup %{tmp_dir: tmp_dir} do
+      old_env = Application.get_env(:dust_utilities, :config, %{})
+      Application.put_env(:dust_utilities, :config, %{persist_dir: tmp_dir})
+
       # Ensure a fresh, unlocked KeyStore for master-key tests
       if Process.whereis(Dust.Core.Supervisor) do
         Supervisor.terminate_child(Dust.Core.Supervisor, Dust.Core.KeyStore)
         Supervisor.delete_child(Dust.Core.Supervisor, Dust.Core.KeyStore)
       end
 
-      key_path = Dust.Utilities.File.master_key_file()
-      File.rm(key_path)
+      _ = stop_supervised(Dust.Core.KeyStore)
 
-      start_supervised!({Dust.Core.KeyStore, [key_path: key_path]})
+      pid = start_supervised!(Dust.Core.KeyStore)
+      Mox.allow(Dust.Bridge.Mock, self(), pid)
+      Mox.stub(Dust.Bridge.Mock, :serve_secrets, fn _, _ -> :ok end)
       :ok = Dust.Core.KeyStore.unlock("test_password")
+
+      on_exit(fn ->
+        if old_env do
+          Application.put_env(:dust_utilities, :config, old_env)
+        else
+          Application.delete_env(:dust_utilities, :config)
+        end
+      end)
+
       :ok
     end
 

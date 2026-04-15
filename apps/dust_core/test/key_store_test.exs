@@ -1,6 +1,8 @@
 defmodule Dust.Core.KeyStoreTest do
   use ExUnit.Case, async: false
 
+  @moduletag :tmp_dir
+
   import Mox
 
   setup :verify_on_exit!
@@ -12,22 +14,35 @@ defmodule Dust.Core.KeyStoreTest do
   # ── Helpers ─────────────────────────────────────────────────────────────
 
   defp start_key_store!() do
-    key_path = Dust.Utilities.File.master_key_file()
-
-    pid = start_supervised!({KeyStore, [key_path: key_path]})
+    pid = start_supervised!(KeyStore)
     Mox.allow(Dust.Bridge.Mock, self(), pid)
     pid
   end
 
-  defp clean_data_dir! do
-    key_path = Dust.Utilities.File.master_key_file()
-    File.rm(key_path)
+  setup_all do
+    Application.stop(:dust_core)
+
+    on_exit(fn -> Application.ensure_all_started(:dust_core) end)
   end
 
-  setup do
-    clean_data_dir!()
+  setup %{tmp_dir: tmp_dir} do
+    old_env = Application.get_env(:dust_utilities, :config, %{})
+    Application.put_env(:dust_utilities, :config, %{persist_dir: tmp_dir})
     start_key_store!()
-    on_exit(fn -> clean_data_dir!() end)
+
+    # Stub serve_secrets globally so tests that don't explicitly expect it
+    # won't trigger Mox.UnexpectedCallError warnings in the KeyStore GenServer.
+    stub(Dust.Bridge.Mock, :serve_secrets, fn _, _ -> :ok end)
+
+    on_exit(fn ->
+      if old_env do
+        Application.put_env(:dust_utilities, :config, old_env)
+      else
+        Application.delete_env(:dust_utilities, :config)
+      end
+    end)
+
+    :ok
   end
 
   # ── Locked state on boot ───────────────────────────────────────────────
@@ -69,7 +84,7 @@ defmodule Dust.Core.KeyStoreTest do
     end
 
     test "decrypts existing key on unlock after restart" do
-      expect(Dust.Bridge.Mock, :serve_secrets, fn _, _ -> :ok end)
+      expect(Dust.Bridge.Mock, :serve_secrets, 2, fn _, _ -> :ok end)
       :ok = KeyStore.unlock(@test_password)
       {:ok, original_key} = KeyStore.get_key()
 
