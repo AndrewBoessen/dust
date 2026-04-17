@@ -1,0 +1,353 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  ELIXIR_VERSION: "1.19.0"
+  OTP_VERSION: "28.1"
+  GO_VERSION: "1.22"
+  MIX_ENV: prod
+
+jobs:
+  # ── Linux x86_64 ─────────────────────────────────────────────────────
+  build-linux-x86_64:
+    name: Linux x86_64
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsnappy-dev
+
+      - name: Cache deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build/prod
+          key: linux-x86_64-mix-prod-${{ hashFiles('**/mix.lock') }}
+          restore-keys: linux-x86_64-mix-prod-
+
+      - name: Install Elixir dependencies
+        run: mix deps.get --only prod
+
+      - name: Build Go sidecar
+        run: |
+          cd apps/dust_bridge/native/tsnet_sidecar
+          CGO_ENABLED=0 go build -ldflags="-s -w" -o tsnet_sidecar
+          chmod +x tsnet_sidecar
+
+      - name: Build release
+        run: mix release dust --overwrite
+
+      - name: Package release
+        run: |
+          cd _build/prod/rel
+          tar -czf dust-linux-x86_64.tar.gz dust/
+          mv dust-linux-x86_64.tar.gz ../../../
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dust-linux-x86_64
+          path: dust-linux-x86_64.tar.gz
+
+  # ── Linux aarch64 ────────────────────────────────────────────────────
+  build-linux-aarch64:
+    name: Linux aarch64
+    runs-on: ubuntu-22.04-arm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsnappy-dev
+
+      - name: Cache deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build/prod
+          key: linux-aarch64-mix-prod-${{ hashFiles('**/mix.lock') }}
+          restore-keys: linux-aarch64-mix-prod-
+
+      - name: Install Elixir dependencies
+        run: mix deps.get --only prod
+
+      - name: Build Go sidecar
+        run: |
+          cd apps/dust_bridge/native/tsnet_sidecar
+          CGO_ENABLED=0 go build -ldflags="-s -w" -o tsnet_sidecar
+          chmod +x tsnet_sidecar
+
+      - name: Build release
+        run: mix release dust --overwrite
+
+      - name: Package release
+        run: |
+          cd _build/prod/rel
+          tar -czf dust-linux-aarch64.tar.gz dust/
+          mv dust-linux-aarch64.tar.gz ../../../
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dust-linux-aarch64
+          path: dust-linux-aarch64.tar.gz
+
+  # ── macOS x86_64 ─────────────────────────────────────────────────────
+  build-macos-x86_64:
+    name: macOS x86_64
+    runs-on: macos-13
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install system dependencies
+        run: brew install snappy
+
+      - name: Cache deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build/prod
+          key: macos-x86_64-mix-prod-${{ hashFiles('**/mix.lock') }}
+          restore-keys: macos-x86_64-mix-prod-
+
+      - name: Install Elixir dependencies
+        run: mix deps.get --only prod
+
+      - name: Build Go sidecar
+        run: |
+          cd apps/dust_bridge/native/tsnet_sidecar
+          CGO_ENABLED=0 go build -ldflags="-s -w" -o tsnet_sidecar
+          chmod +x tsnet_sidecar
+
+      - name: Build release
+        run: mix release dust --overwrite
+
+      - name: Package release
+        run: |
+          cd _build/prod/rel
+          tar -czf dust-macos-x86_64.tar.gz dust/
+          mv dust-macos-x86_64.tar.gz ../../../
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dust-macos-x86_64
+          path: dust-macos-x86_64.tar.gz
+
+  # ── macOS aarch64 (Apple Silicon) ────────────────────────────────────
+  build-macos-aarch64:
+    name: macOS aarch64
+    runs-on: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install system dependencies
+        run: brew install snappy
+
+      - name: Cache deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build/prod
+          key: macos-aarch64-mix-prod-${{ hashFiles('**/mix.lock') }}
+          restore-keys: macos-aarch64-mix-prod-
+
+      - name: Install Elixir dependencies
+        run: mix deps.get --only prod
+
+      - name: Build Go sidecar
+        run: |
+          cd apps/dust_bridge/native/tsnet_sidecar
+          CGO_ENABLED=0 go build -ldflags="-s -w" -o tsnet_sidecar
+          chmod +x tsnet_sidecar
+
+      - name: Build release
+        run: mix release dust --overwrite
+
+      - name: Package release
+        run: |
+          cd _build/prod/rel
+          tar -czf dust-macos-aarch64.tar.gz dust/
+          mv dust-macos-aarch64.tar.gz ../../../
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dust-macos-aarch64
+          path: dust-macos-aarch64.tar.gz
+
+  # ── Windows x86_64 ───────────────────────────────────────────────────
+  build-windows-x86_64:
+    name: Windows x86_64
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install vcpkg dependencies
+        run: |
+          vcpkg install snappy:x64-windows
+          echo "CMAKE_PREFIX_PATH=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows" >> $env:GITHUB_ENV
+
+      - name: Cache deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build/prod
+          key: windows-x86_64-mix-prod-${{ hashFiles('**/mix.lock') }}
+          restore-keys: windows-x86_64-mix-prod-
+
+      - name: Install Elixir dependencies
+        run: mix deps.get --only prod
+
+      - name: Build Go sidecar
+        run: |
+          cd apps/dust_bridge/native/tsnet_sidecar
+          $env:CGO_ENABLED="0"
+          go build -ldflags="-s -w" -o tsnet_sidecar.exe
+        shell: pwsh
+
+      - name: Build release
+        run: mix release dust --overwrite
+
+      - name: Package release
+        run: |
+          cd _build/prod/rel
+          Compress-Archive -Path dust -DestinationPath dust-windows-x86_64.zip
+          Move-Item dust-windows-x86_64.zip ../../../
+        shell: pwsh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dust-windows-x86_64
+          path: dust-windows-x86_64.zip
+
+  # ── Create GitHub Release ────────────────────────────────────────────
+  release:
+    name: Create GitHub Release
+    needs:
+      - build-linux-x86_64
+      - build-linux-aarch64
+      - build-macos-x86_64
+      - build-macos-aarch64
+      - build-windows-x86_64
+    runs-on: ubuntu-22.04
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          find . -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec mv {} . \;
+          sha256sum dust-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Determine tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Dust ${{ steps.tag.outputs.tag }}
+          draft: true
+          generate_release_notes: true
+          files: |
+            artifacts/dust-linux-x86_64.tar.gz
+            artifacts/dust-linux-aarch64.tar.gz
+            artifacts/dust-macos-x86_64.tar.gz
+            artifacts/dust-macos-aarch64.tar.gz
+            artifacts/dust-windows-x86_64.zip
+            artifacts/SHA256SUMS.txt
