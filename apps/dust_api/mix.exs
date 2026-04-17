@@ -1,9 +1,9 @@
-defmodule DustDaemon.MixProject do
+defmodule Dust.Api.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :dust_daemon,
+      app: :dust_api,
       version: "0.1.0",
       build_path: "../../_build",
       config_path: "../../config/config.exs",
@@ -19,22 +19,22 @@ defmodule DustDaemon.MixProject do
   def application do
     [
       extra_applications: [:logger],
-      mod: {DustDaemon.Application, []}
+      mod: {Dust.Api.Application, []}
     ]
   end
 
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:bandit, "~> 1.6"},
+      {:plug, "~> 1.16"},
+      {:jason, "~> 1.4"},
+      {:websock_adapter, "~> 0.5"},
+      {:dust_daemon, in_umbrella: true},
       {:dust_core, in_umbrella: true},
       {:dust_mesh, in_umbrella: true},
-      {:dust_storage, in_umbrella: true},
       {:dust_bridge, in_umbrella: true},
-      {:dust_utilities, in_umbrella: true},
-      {:disk_space, "~> 1.0.0"},
-      {:mime, "~> 2.0"},
-      {:rustler, "~> 0.37", override: true},
-      {:mox, "~> 1.0", only: :test}
+      {:dust_utilities, in_umbrella: true}
     ]
   end
 end

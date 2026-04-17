@@ -7,7 +7,8 @@ defmodule Dust.MixProject do
       name: "Dust",
       version: "0.1.0",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      releases: releases()
     ]
   end
 
@@ -19,4 +20,23 @@ defmodule Dust.MixProject do
   defp deps do
     [{:ex_doc, "~> 0.30", only: :dev, runtime: false}]
   end
+
+  defp releases do
+    [
+      dust: [
+        applications: [
+          dust_utilities: :permanent,
+          dust_bridge: :permanent,
+          dust_core: :permanent,
+          dust_storage: :permanent,
+          dust_mesh: :permanent,
+          dust_daemon: :permanent,
+          dust_api: :permanent
+        ],
+        strip_beams: [keep: ["Docs"]],
+        cookie: "dust_cookie"
+      ]
+    ]
+  end
 end
+

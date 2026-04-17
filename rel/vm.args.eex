@@ -1,0 +1,26 @@
+## VM arguments for the Dust release
+##
+## These are passed directly to the Erlang VM when the release boots.
+
+## ── Distribution ────────────────────────────────────────────────────
+## Use the custom EPMD module that routes through Tailscale
+-epmd_module Elixir.Dust.Bridge.EPMD
+
+## ── Memory & GC ─────────────────────────────────────────────────────
+## Enable dirty schedulers for NIF-heavy workloads (RocksDB, Reed-Solomon)
++SDcpu <%= System.schedulers_online() %>
+
+## Increase the process limit (default 262144)
++P 1048576
+
+## Increase the atom limit
++t 1048576
+
+## ── Network ─────────────────────────────────────────────────────────
+## Set the distribution listen port range
+-kernel inet_dist_listen_min 9000
+-kernel inet_dist_listen_max 9000
+
+## ── Cluster ─────────────────────────────────────────────────────────
+## Heartbeat interval for distributed Erlang
+-kernel net_ticktime 60

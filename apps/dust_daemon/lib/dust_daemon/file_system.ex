@@ -157,10 +157,31 @@ defmodule Dust.Daemon.FileSystem do
   end
 
   defp get_mime_type(path) do
-    case System.cmd("file", ["-b", "--mime-type", path]) do
-      {mime, 0} -> String.trim(mime)
-      _ -> "application/octet-stream"
+    # Use extension-based lookup (cross-platform, no external commands)
+    ext_mime = MIME.from_path(path)
+
+    # On Unix, try the `file` command for better accuracy when extension is generic
+    if ext_mime == "application/octet-stream" do
+      try_system_file_command(path)
+    else
+      ext_mime
     end
+  end
+
+  @spec try_system_file_command(Path.t()) :: String.t()
+  defp try_system_file_command(path) do
+    case :os.type() do
+      {:unix, _} ->
+        case System.cmd("file", ["-b", "--mime-type", path], stderr_to_stdout: true) do
+          {mime, 0} -> String.trim(mime)
+          _ -> "application/octet-stream"
+        end
+
+      _ ->
+        "application/octet-stream"
+    end
+  rescue
+    _ -> "application/octet-stream"
   end
 
   # ── Upload Chunk Processing ────────────────────────────────────────────
