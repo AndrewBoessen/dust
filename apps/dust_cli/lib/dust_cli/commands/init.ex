@@ -68,7 +68,7 @@ defmodule Dust.CLI.Commands.Init do
 
       {200, {:ok, %{"key_store" => "locked"}}} ->
         IO.puts("")
-        password = prompt_password("  Enter password (creates new key on first use): ")
+        password = get_secret("  Enter password (creates new key on first use): ")
 
         case Client.post(config, "/api/v1/unlock", %{password: password}) do
           {200, {:ok, %{"status" => status}}} ->
@@ -207,18 +207,26 @@ defmodule Dust.CLI.Commands.Init do
     IO.read(:stdio, :line) |> String.trim()
   end
 
-  defp prompt_password(message) do
-    IO.write(message)
+  def get_secret(prompt) do
+    pid = spawn_link(fn -> loop(prompt) end)
+    ref = make_ref()
+    value = IO.gets("#{prompt}: ")
+    send(pid, {:done, self(), ref})
+    receive do
+      {:done, ^pid, ^ref} -> :ok
+    end
+    value |> String.trim()
+  end
 
-    case :io.get_password() do
-      {:error, _} ->
-        IO.gets("") |> String.trim()
-
-      password when is_list(password) ->
-        to_string(password) |> String.trim()
-
-      password when is_binary(password) ->
-        String.trim(password)
+  defp loop(prompt) do
+    receive do
+      {:done, parent, ref} ->
+        send(parent, {:done, self(), ref})
+        IO.write(:standard_error, "\e[2K\r")
+    after
+      1 ->
+        IO.write(:standard_error, "\e[2K\r#{prompt}: ")
+        loop(prompt)
     end
   end
 

@@ -13,7 +13,7 @@ defmodule Dust.CLI.Commands.Auth do
 
     password =
       case Keyword.get(opts, :password) do
-        nil -> prompt_password()
+        nil -> get_secret("Password: ")
         p -> p
       end
 
@@ -67,18 +67,26 @@ defmodule Dust.CLI.Commands.Auth do
 
   # ── Private ────────────────────────────────────────────────────────────
 
-  defp prompt_password do
-    IO.write("Password: ")
+  def get_secret(prompt) do
+    pid = spawn_link(fn -> loop(prompt) end)
+    ref = make_ref()
+    value = IO.gets("#{prompt}: ")
+    send(pid, {:done, self(), ref})
+    receive do
+      {:done, ^pid, ^ref} -> :ok
+    end
+    value |> String.trim()
+  end
 
-    case :io.get_password() do
-      {:error, _} ->
-        IO.gets("") |> String.trim()
-
-      password when is_list(password) ->
-        to_string(password) |> String.trim()
-
-      password when is_binary(password) ->
-        String.trim(password)
+  defp loop(prompt) do
+    receive do
+      {:done, parent, ref} ->
+        send(parent, {:done, self(), ref})
+        IO.write(:standard_error, "\e[2K\r")
+    after
+      1 ->
+        IO.write(:standard_error, "\e[2K\r#{prompt}: ")
+        loop(prompt)
     end
   end
 end
