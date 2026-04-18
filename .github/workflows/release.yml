@@ -137,7 +137,7 @@ jobs:
   # ── Server Release: macOS x86_64 ─────────────────────────────────────
   build-server-macos-x86_64:
     name: Server — macOS x86_64
-    runs-on: macos-13
+    runs-on: macos-15-intel
 
     steps:
       - uses: actions/checkout@v4
@@ -309,81 +309,42 @@ jobs:
           name: dust-server-windows-x86_64
           path: dust-server-windows-x86_64.zip
 
-  # ── CLI Binary: Linux & macOS (Burrito cross-compiles from Linux) ─────
+  # ── CLI Binaries: Matrix across all platforms ─────────────────────────
   #
-  # Burrito cross-compiles all non-Windows targets from a single Linux
-  # runner, so we only need one job for Linux + macOS CLI binaries.
-  build-cli-unix:
-    name: CLI — Linux & macOS
-    runs-on: ubuntu-22.04
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Elixir
-        uses: erlef/setup-beam@v1
-        with:
-          elixir-version: ${{ env.ELIXIR_VERSION }}
-          otp-version: ${{ env.OTP_VERSION }}
-
-      # Burrito needs Go to build its self-extractor
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-
-      # Burrito uses zig for cross-compilation
-      - name: Install Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: "0.15.2"
-
-      - name: Cache deps
-        uses: actions/cache@v4
-        with:
-          path: |
-            deps
-            _build/prod
-          key: cli-unix-${{ hashFiles('**/mix.lock') }}
-          restore-keys: cli-unix-
-
-      - name: Install Elixir dependencies
-        run: mix deps.get --only prod
-
-      - name: Build CLI binaries
-        working-directory: apps/dust_cli
-        run: mix release dustctl
-        env:
-          BURRITO_TARGET: linux_x86_64,linux_aarch64,macos_x86_64,macos_aarch64
-
-      - name: Upload Linux x86_64 CLI
-        uses: actions/upload-artifact@v4
-        with:
-          name: dustctl-linux-x86_64
-          path: apps/dust_cli/burrito_out/dustctl_linux_x86_64
-
-      - name: Upload Linux aarch64 CLI
-        uses: actions/upload-artifact@v4
-        with:
-          name: dustctl-linux-aarch64
-          path: apps/dust_cli/burrito_out/dustctl_linux_aarch64
-
-      - name: Upload macOS x86_64 CLI
-        uses: actions/upload-artifact@v4
-        with:
-          name: dustctl-macos-x86_64
-          path: apps/dust_cli/burrito_out/dustctl_macos_x86_64
-
-      - name: Upload macOS aarch64 CLI
-        uses: actions/upload-artifact@v4
-        with:
-          name: dustctl-macos-aarch64
-          path: apps/dust_cli/burrito_out/dustctl_macos_aarch64
-
-  # ── CLI Binary: Windows (must build natively on Windows) ─────────────
-  build-cli-windows:
-    name: CLI — Windows x86_64
-    runs-on: windows-2022
+  # Each target builds natively on its own runner — no cross-compilation
+  # needed. GitHub waits for all matrix legs before proceeding to the
+  # release job.
+  build-cli:
+    name: CLI — ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux_x86_64
+            runner: ubuntu-22.04
+            artifact_ext: ""
+            sys_deps: |
+              sudo apt-get update
+              sudo apt-get install -y xz-utils
+          - target: linux_aarch64
+            runner: ubuntu-22.04-arm
+            artifact_ext: ""
+            sys_deps: |
+              sudo apt-get update
+              sudo apt-get install -y xz-utils
+          - target: macos_x86_64
+            runner: macos-15-intel
+            artifact_ext: ""
+            sys_deps: brew install xz
+          - target: macos_aarch64
+            runner: macos-14
+            artifact_ext: ""
+            sys_deps: brew install xz
+          - target: windows_x86_64
+            runner: windows-2022
+            artifact_ext: ".exe"
+            sys_deps: ""
 
     steps:
       - uses: actions/checkout@v4
@@ -404,14 +365,26 @@ jobs:
         with:
           version: "0.15.2"
 
+      # MSVC is required on Windows so Burrito's Zig wrapper compiles correctly
+      - name: Set up MSVC environment (Windows only)
+        if: matrix.target == 'windows_x86_64'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install system dependencies
+        if: matrix.sys_deps != ''
+        run: ${{ matrix.sys_deps }}
+        shell: bash
+
       - name: Cache deps
         uses: actions/cache@v4
         with:
           path: |
             deps
             _build/prod
-          key: cli-windows-x86_64-${{ hashFiles('**/mix.lock') }}
-          restore-keys: cli-windows-x86_64-
+          key: cli-${{ matrix.target }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: cli-${{ matrix.target }}-
 
       - name: Install Elixir dependencies
         run: mix deps.get --only prod
@@ -420,13 +393,13 @@ jobs:
         working-directory: apps/dust_cli
         run: mix release dustctl
         env:
-          BURRITO_TARGET: windows_x86_64
+          BURRITO_TARGET: ${{ matrix.target }}
 
-      - name: Upload Windows CLI
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dustctl-windows-x86_64
-          path: apps/dust_cli/burrito_out/dustctl_windows_x86_64.exe
+          name: dustctl-${{ matrix.target }}
+          path: apps/dust_cli/burrito_out/dustctl_${{ matrix.target }}${{ matrix.artifact_ext }}
 
   # ── Create GitHub Release ─────────────────────────────────────────────
   release:
@@ -437,8 +410,7 @@ jobs:
       - build-server-macos-x86_64
       - build-server-macos-aarch64
       - build-server-windows-x86_64
-      - build-cli-unix
-      - build-cli-windows
+      - build-cli
     runs-on: ubuntu-22.04
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
 
@@ -477,9 +449,9 @@ jobs:
             artifacts/dust-server-macos-x86_64.tar.gz
             artifacts/dust-server-macos-aarch64.tar.gz
             artifacts/dust-server-windows-x86_64.zip
-            artifacts/dustctl-linux-x86_64
-            artifacts/dustctl-linux-aarch64
-            artifacts/dustctl-macos-x86_64
-            artifacts/dustctl-macos-aarch64
-            artifacts/dustctl-windows-x86_64.exe
+            artifacts/dustctl-linux_x86_64
+            artifacts/dustctl-linux_aarch64
+            artifacts/dustctl-macos_x86_64
+            artifacts/dustctl-macos_aarch64
+            artifacts/dustctl-windows_x86_64.exe
             artifacts/SHA256SUMS.txt
