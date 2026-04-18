@@ -10,9 +10,9 @@ defmodule Dust.Cli.MixProject do
       deps_path: "../../deps",
       lockfile: "../../mix.lock",
       elixir: "~> 1.19",
-      start_permanent: false,
+      start_permanent: true,
       deps: deps(),
-      escript: escript()
+      releases: releases()
     ]
   end
 
@@ -24,15 +24,25 @@ defmodule Dust.Cli.MixProject do
 
   defp deps do
     [
-      {:jason, "~> 1.4"}
+      {:jason, "~> 1.4"},
+      {:burrito, "~> 1.0"}
     ]
   end
 
-  defp escript do
+  defp releases do
     [
-      main_module: Dust.CLI,
-      name: "dustctl",
-      emu_args: "-noinput"
+      dustctl: [
+        steps: [:assemble, &Burrito.wrap/1],
+        burrito: [
+          targets: [
+            linux_x86_64:   [os: :linux,   cpu: :x86_64],
+            linux_aarch64:  [os: :linux,   cpu: :aarch64],
+            macos_x86_64:   [os: :darwin,  cpu: :x86_64],
+            macos_aarch64:  [os: :darwin,  cpu: :aarch64],
+            windows_x86_64: [os: :windows, cpu: :x86_64]
+          ]
+        ]
+      ]
     ]
   end
 end
