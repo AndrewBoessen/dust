@@ -28,3 +28,6 @@ tsnet-state*
 
 # Dev persist directory
 /dust_dev/
+
+# CLI binary
+dustctl
