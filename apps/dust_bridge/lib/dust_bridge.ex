@@ -154,6 +154,37 @@ defmodule Dust.Bridge do
     end
   end
 
+  @doc """
+  Queries the Go sidecar for the current Tailscale authentication state.
+
+  Returns a map with:
+    - `:state` — `"authenticated"`, `"needs_login"`, or `"connecting"`
+    - `:self_ip` — the node's Tailscale IP (empty string if not yet assigned)
+    - `:auth_url` — the login URL to visit (empty string if not needed)
+  """
+  @impl true
+  @spec auth_status() ::
+          {:ok, %{state: String.t(), self_ip: String.t(), auth_url: String.t()}}
+          | {:error, term()}
+  def auth_status do
+    case send_command("AUTH_STATUS") do
+      {:ok, <<"OK:", payload::binary>>} ->
+        case String.split(payload, "|", parts: 3) do
+          [state, self_ip, auth_url] ->
+            {:ok, %{state: state, self_ip: self_ip, auth_url: auth_url}}
+
+          _ ->
+            {:error, {:bad_response, payload}}
+        end
+
+      {:ok, <<"ERR: ", reason::binary>>} ->
+        {:error, reason}
+
+      error ->
+        error
+    end
+  end
+
   # ── GenServer callbacks ─────────────────────────────────────────────────
 
   @impl true

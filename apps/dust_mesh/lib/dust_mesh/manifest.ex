@@ -176,11 +176,21 @@ defmodule Dust.Mesh.Manifest.ShardMap do
           shard_index = String.to_integer(shard_idx_str)
           node = String.to_atom(node_str)
 
-          Map.update(acc, chunk_hash, %{shard_index => %__MODULE__{nodes: MapSet.new([node])}}, fn chunk_map ->
-            Map.update(chunk_map, shard_index, %__MODULE__{nodes: MapSet.new([node])}, fn existing ->
-              %{existing | nodes: MapSet.put(existing.nodes, node)}
-            end)
-          end)
+          Map.update(
+            acc,
+            chunk_hash,
+            %{shard_index => %__MODULE__{nodes: MapSet.new([node])}},
+            fn chunk_map ->
+              Map.update(
+                chunk_map,
+                shard_index,
+                %__MODULE__{nodes: MapSet.new([node])},
+                fn existing ->
+                  %{existing | nodes: MapSet.put(existing.nodes, node)}
+                end
+              )
+            end
+          )
 
         _ ->
           acc

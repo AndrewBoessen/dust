@@ -251,14 +251,70 @@ defmodule Dust.Core.KeyStore do
 
   @spec read_machine_id() :: String.t()
   defp read_machine_id do
-    case File.read("/etc/machine-id") do
-      {:ok, id} ->
-        String.trim(id)
+    case :os.type() do
+      {:unix, :linux} ->
+        read_linux_machine_id()
 
-      {:error, _} ->
-        # Fallback: hostname + a stable identifier
-        {:ok, hostname} = :inet.gethostname()
-        to_string(hostname)
+      {:unix, :darwin} ->
+        read_macos_machine_id()
+
+      {:win32, _} ->
+        read_windows_machine_id()
+
+      _ ->
+        hostname_fallback()
     end
+  end
+
+  @spec read_linux_machine_id() :: String.t()
+  defp read_linux_machine_id do
+    with {:error, _} <- File.read("/etc/machine-id"),
+         {:error, _} <- File.read("/var/lib/dbus/machine-id") do
+      hostname_fallback()
+    else
+      {:ok, id} -> String.trim(id)
+    end
+  end
+
+  @spec read_macos_machine_id() :: String.t()
+  defp read_macos_machine_id do
+    case System.cmd("ioreg", ["-rd1", "-c", "IOPlatformExpertDevice"], stderr_to_stdout: true) do
+      {output, 0} ->
+        case Regex.run(~r/"IOPlatformUUID"\s*=\s*"([^"]+)"/, output) do
+          [_, uuid] -> uuid
+          _ -> hostname_fallback()
+        end
+
+      _ ->
+        hostname_fallback()
+    end
+  rescue
+    _ -> hostname_fallback()
+  end
+
+  @spec read_windows_machine_id() :: String.t()
+  defp read_windows_machine_id do
+    case System.cmd(
+           "reg",
+           ["query", "HKLM\\SOFTWARE\\Microsoft\\Cryptography", "/v", "MachineGuid"],
+           stderr_to_stdout: true
+         ) do
+      {output, 0} ->
+        case Regex.run(~r/MachineGuid\s+REG_SZ\s+(.+)/, output) do
+          [_, guid] -> String.trim(guid)
+          _ -> hostname_fallback()
+        end
+
+      _ ->
+        hostname_fallback()
+    end
+  rescue
+    _ -> hostname_fallback()
+  end
+
+  @spec hostname_fallback() :: String.t()
+  defp hostname_fallback do
+    {:ok, hostname} = :inet.gethostname()
+    to_string(hostname)
   end
 end

@@ -27,6 +27,8 @@ var (
 	inviteTokensMu sync.Mutex
 	masterSecrets  []byte
 	nodeTags       []string
+	authURL        string
+	authURLMu      sync.Mutex
 )
 
 func main() {
@@ -56,19 +58,41 @@ func main() {
 	}
 	defer srv.Close()
 
+	// Capture auth URL from any tsnet or standard log output.
+	// tsnet may emit the auth URL via its Logf callback or via Go's
+	// standard log package — we capture both paths.
+	srv.Logf = func(format string, args ...any) {
+		msg := fmt.Sprintf(format, args...)
+		log.Print(msg)
+		captureAuthURL(msg)
+	}
+
+	// Also intercept standard log output for auth URL detection,
+	// since some tsnet versions log via log.Printf directly.
+	log.SetOutput(&authLogWriter{original: os.Stderr})
+
 	// Start the Tailscale node
 	if err := srv.Start(); err != nil {
 		log.Fatalf("Failed to start tsnet: %v", err)
 	}
 
-	// Wait for the node to be connected to the Tailnet in the background
-	// so the Elixir port loop doesn't block while waiting for auth.
-	// After connecting, verify that the control plane granted our tags.
-	if _, err := srv.Up(context.Background()); err != nil {
-		log.Printf("Failed to connect to tailnet: %v", err)
-		return
-	}
-	verifyTags(srv)
+	// Wait for the node to be connected to the Tailnet in the background.
+	// srv.Up() blocks until authenticated. Meanwhile, the AUTH_STATUS command
+	// can return the pending auth URL from the local client status.
+	go func() {
+		if _, err := srv.Up(context.Background()); err != nil {
+			log.Printf("Failed to connect to tailnet: %v", err)
+			return
+		}
+		// Clear auth URL once connected
+		authURLMu.Lock()
+		authURL = ""
+		authURLMu.Unlock()
+		verifyTags(srv)
+	}()
+
+	// Give the sidecar a moment to initialize before accepting commands
+	time.Sleep(500 * time.Millisecond)
 
 	// The Port Communication Loop
 	// Elixir uses BigEndian for {:packet, 4}
@@ -184,8 +208,89 @@ func handleCommand(srv *tsnet.Server, cmd []byte) []byte {
 	case "GET_STATUS":
 		return []byte("OK: running")
 
+	case "AUTH_STATUS":
+		return handleAuthStatus(srv)
+
 	default:
 		return append([]byte("ACK: "), cmd...)
+	}
+}
+
+// captureAuthURL extracts a Tailscale login URL from any log message.
+func captureAuthURL(msg string) {
+	if !strings.Contains(msg, "https://login.tailscale.com/") {
+		return
+	}
+	for _, word := range strings.Fields(msg) {
+		if strings.HasPrefix(word, "https://login.tailscale.com/") {
+			authURLMu.Lock()
+			authURL = word
+			authURLMu.Unlock()
+			return
+		}
+	}
+}
+
+// authLogWriter intercepts all log.Print output to capture auth URLs
+// while still writing to the original output (stderr).
+type authLogWriter struct {
+	original io.Writer
+}
+
+func (w *authLogWriter) Write(p []byte) (n int, err error) {
+	captureAuthURL(string(p))
+	return w.original.Write(p)
+}
+
+// handleAuthStatus returns the current Tailscale auth state.
+// Response format: "OK:state|self_ip|auth_url"
+// state is one of: authenticated, needs_login, connecting
+func handleAuthStatus(srv *tsnet.Server) []byte {
+	lc, err := srv.LocalClient()
+	if err != nil {
+		// If we can't get the local client, check for a pending auth URL
+		authURLMu.Lock()
+		url := authURL
+		authURLMu.Unlock()
+		if url != "" {
+			return []byte("OK:needs_login||" + url)
+		}
+		return []byte("OK:connecting||")
+	}
+
+	st, err := lc.Status(context.Background())
+	if err != nil {
+		authURLMu.Lock()
+		url := authURL
+		authURLMu.Unlock()
+		return []byte("OK:connecting||" + url)
+	}
+
+	// Determine self IP
+	selfIP := ""
+	if st.Self != nil && len(st.Self.TailscaleIPs) > 0 {
+		selfIP = st.Self.TailscaleIPs[0].String()
+	}
+
+	// Check auth state — prefer st.AuthURL from the API, fall back to log-captured URL
+	authURLMu.Lock()
+	url := authURL
+	authURLMu.Unlock()
+	if st.AuthURL != "" {
+		url = st.AuthURL
+	}
+
+	switch {
+	case st.BackendState == "Running" && selfIP != "":
+		// Clear the auth URL once authenticated
+		authURLMu.Lock()
+		authURL = ""
+		authURLMu.Unlock()
+		return []byte(fmt.Sprintf("OK:authenticated|%s|", selfIP))
+	case st.BackendState == "NeedsLogin" || url != "":
+		return []byte(fmt.Sprintf("OK:needs_login|%s|%s", selfIP, url))
+	default:
+		return []byte(fmt.Sprintf("OK:connecting|%s|%s", selfIP, url))
 	}
 }
 

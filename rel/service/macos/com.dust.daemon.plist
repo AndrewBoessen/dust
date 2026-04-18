@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.dust.daemon</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/dust</string>
+        <string>start</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+        <key>Crashed</key>
+        <true/>
+    </dict>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>DUST_DATA_DIR</key>
+        <string>/Users/Shared/.dust</string>
+        <key>RELEASE_NODE</key>
+        <string>dust@127.0.0.1</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/usr/local/var/log/dust/stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/usr/local/var/log/dust/stderr.log</string>
+
+    <key>SoftResourceLimits</key>
+    <dict>
+        <key>NumberOfFiles</key>
+        <integer>65536</integer>
+    </dict>
+
+    <key>HardResourceLimits</key>
+    <dict>
+        <key>NumberOfFiles</key>
+        <integer>65536</integer>
+    </dict>
+</dict>
+</plist>
