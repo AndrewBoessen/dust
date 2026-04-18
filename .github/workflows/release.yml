@@ -65,8 +65,12 @@ jobs:
       - name: Build release
         run: mix release dust --overwrite
 
+      - name: Build CLI
+        run: cd apps/dust_cli && mix escript.build
+
       - name: Package release
         run: |
+          cp apps/dust_cli/dustctl _build/prod/rel/dust/bin/
           cd _build/prod/rel
           tar -czf dust-linux-x86_64.tar.gz dust/
           mv dust-linux-x86_64.tar.gz ../../../
@@ -122,8 +126,12 @@ jobs:
       - name: Build release
         run: mix release dust --overwrite
 
+      - name: Build CLI
+        run: cd apps/dust_cli && mix escript.build
+
       - name: Package release
         run: |
+          cp apps/dust_cli/dustctl _build/prod/rel/dust/bin/
           cd _build/prod/rel
           tar -czf dust-linux-aarch64.tar.gz dust/
           mv dust-linux-aarch64.tar.gz ../../../
@@ -177,8 +185,12 @@ jobs:
       - name: Build release
         run: mix release dust --overwrite
 
+      - name: Build CLI
+        run: cd apps/dust_cli && mix escript.build
+
       - name: Package release
         run: |
+          cp apps/dust_cli/dustctl _build/prod/rel/dust/bin/
           cd _build/prod/rel
           tar -czf dust-macos-x86_64.tar.gz dust/
           mv dust-macos-x86_64.tar.gz ../../../
@@ -232,8 +244,12 @@ jobs:
       - name: Build release
         run: mix release dust --overwrite
 
+      - name: Build CLI
+        run: cd apps/dust_cli && mix escript.build
+
       - name: Package release
         run: |
+          cp apps/dust_cli/dustctl _build/prod/rel/dust/bin/
           cd _build/prod/rel
           tar -czf dust-macos-aarch64.tar.gz dust/
           mv dust-macos-aarch64.tar.gz ../../../
@@ -290,11 +306,15 @@ jobs:
       - name: Build release
         run: mix release dust --overwrite
 
+      - name: Build CLI
+        run: cd apps/dust_cli && mix escript.build
+
       - name: Package release
         run: |
-          cd _build/prod/rel
+          Copy-Item apps\dust_cli\dustctl _build\prod\rel\dust\bin\dustctl
+          cd _build\prod\rel
           Compress-Archive -Path dust -DestinationPath dust-windows-x86_64.zip
-          Move-Item dust-windows-x86_64.zip ../../../
+          Move-Item dust-windows-x86_64.zip ..\..\..\.
         shell: pwsh
 
       - name: Upload artifact

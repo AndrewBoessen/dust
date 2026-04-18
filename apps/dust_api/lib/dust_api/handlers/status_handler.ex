@@ -9,6 +9,8 @@ defmodule Dust.Api.Handlers.StatusHandler do
   @doc "Returns aggregated node status as JSON."
   @spec handle(Plug.Conn.t()) :: Plug.Conn.t()
   def handle(conn) do
+    network = network_status()
+
     status = %{
       node: node() |> to_string(),
       ready: Dust.Daemon.Readiness.ready?(),
@@ -16,6 +18,7 @@ defmodule Dust.Api.Handlers.StatusHandler do
       peer_names: Node.list() |> Enum.map(&to_string/1),
       key_store: key_store_status(),
       disk: disk_status(),
+      network: network,
       uptime_ms: :erlang.statistics(:wall_clock) |> elem(0),
       version: "0.1.0"
     }
@@ -48,6 +51,48 @@ defmodule Dust.Api.Handlers.StatusHandler do
       _ -> %{quota_bytes: 0, available_bytes: 0, total_bytes: 0}
     end
   end
+
+  defp network_status do
+    bridge = Application.get_env(:dust_bridge, :bridge_module, Dust.Bridge)
+
+    try do
+      auth = try_auth_status(bridge)
+      peers = try_peer_count(bridge)
+
+      connected = auth.state == "authenticated"
+
+      %{
+        connected: connected,
+        state: auth.state,
+        self_ip: non_empty(auth.self_ip),
+        auth_url: non_empty(auth.auth_url),
+        tailscale_peers: peers
+      }
+    rescue
+      _ -> %{connected: false, state: "unknown", self_ip: nil, auth_url: nil, tailscale_peers: 0}
+    end
+  end
+
+  defp try_auth_status(bridge) do
+    case bridge.auth_status() do
+      {:ok, status} -> status
+      _ -> %{state: "unknown", self_ip: "", auth_url: ""}
+    end
+  rescue
+    _ -> %{state: "unknown", self_ip: "", auth_url: ""}
+  end
+
+  defp try_peer_count(bridge) do
+    case bridge.get_peers() do
+      {:ok, peers} -> length(peers)
+      _ -> 0
+    end
+  rescue
+    _ -> 0
+  end
+
+  defp non_empty(""), do: nil
+  defp non_empty(val), do: val
 
   defp json_response(conn, status, body) do
     conn

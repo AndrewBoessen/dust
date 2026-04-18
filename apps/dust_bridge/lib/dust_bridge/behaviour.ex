@@ -28,4 +28,9 @@ defmodule Dust.Bridge.Behaviour do
 
   @doc "Exposes a local `port` on the node's Tailscale IP via the sidecar."
   @callback expose(port :: integer()) :: :ok | {:error, term()}
+
+  @doc "Returns the current Tailscale auth status: state, self IP, and login URL (if pending)."
+  @callback auth_status() ::
+              {:ok, %{state: String.t(), self_ip: String.t(), auth_url: String.t()}}
+              | {:error, term()}
 end
