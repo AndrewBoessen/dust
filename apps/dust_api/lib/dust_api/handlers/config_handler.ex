@@ -35,7 +35,10 @@ defmodule Dust.Api.Handlers.ConfigHandler do
     updates = conn.body_params
 
     if map_size(updates) == 0 do
-      json_response(conn, 400, %{error: "empty_body", message: "Provide key-value pairs to update"})
+      json_response(conn, 400, %{
+        error: "empty_body",
+        message: "Provide key-value pairs to update"
+      })
     else
       results =
         Enum.map(updates, fn {key_str, value} ->

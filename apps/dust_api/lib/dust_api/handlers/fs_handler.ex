@@ -53,7 +53,10 @@ defmodule Dust.Api.Handlers.FsHandler do
         end
 
       _ ->
-        json_response(conn, 400, %{error: "missing_fields", message: "'parent_id' and 'name' are required"})
+        json_response(conn, 400, %{
+          error: "missing_fields",
+          message: "'parent_id' and 'name' are required"
+        })
     end
   end
 

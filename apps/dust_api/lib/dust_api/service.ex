@@ -118,8 +118,12 @@ defmodule Dust.Api.Service do
 
   defp status_systemd do
     case System.cmd("systemctl", ["is-active", "dust"], stderr_to_stdout: true) do
-      {"active\n", 0} -> :running
-      {"inactive\n", _} -> :stopped
+      {"active\n", 0} ->
+        :running
+
+      {"inactive\n", _} ->
+        :stopped
+
       _ ->
         if File.exists?(@systemd_unit_dest), do: :stopped, else: :not_installed
     end

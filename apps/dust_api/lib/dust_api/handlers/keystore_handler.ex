@@ -28,7 +28,10 @@ defmodule Dust.Api.Handlers.KeystoreHandler do
         end
 
       _ ->
-        json_response(conn, 400, %{error: "missing_password", message: "Field 'password' is required"})
+        json_response(conn, 400, %{
+          error: "missing_password",
+          message: "Field 'password' is required"
+        })
     end
   end
 

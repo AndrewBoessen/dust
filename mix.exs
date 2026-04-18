@@ -39,4 +39,3 @@ defmodule Dust.MixProject do
     ]
   end
 end
-
