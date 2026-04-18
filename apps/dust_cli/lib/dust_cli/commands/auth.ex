@@ -68,24 +68,17 @@ defmodule Dust.CLI.Commands.Auth do
   # ── Private ────────────────────────────────────────────────────────────
 
   defp prompt_password do
-    pid = spawn_link(fn -> overwrite_loop("Password: ") end)
-    ref = make_ref()
-    value = IO.gets("Password: ") |> String.trim()
-    send(pid, {:done, self(), ref})
-    receive do: ({^ref, :done} -> :ok)
-    value
-  end
+    IO.write("Password: ")
 
-  defp overwrite_loop(prompt) do
-    receive do
-      {:done, parent, ref} ->
-        # Clear the line and move cursor back
-        IO.write("\e[2K\r")
-        send(parent, {ref, :done})
-    after
-      1 ->
-        IO.write("\e[2K\r#{prompt}")
-        overwrite_loop(prompt)
+    case :io.get_password() do
+      {:error, _} ->
+        IO.gets("") |> String.trim()
+
+      password when is_list(password) ->
+        to_string(password) |> String.trim()
+
+      password when is_binary(password) ->
+        String.trim(password)
     end
   end
 end

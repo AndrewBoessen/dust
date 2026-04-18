@@ -208,23 +208,17 @@ defmodule Dust.CLI.Commands.Init do
   end
 
   defp prompt_password(message) do
-    pid = spawn_link(fn -> overwrite_loop(message) end)
-    ref = make_ref()
-    value = IO.gets(message) |> String.trim()
-    send(pid, {:done, self(), ref})
-    receive do: ({^ref, :done} -> :ok)
-    value
-  end
+    IO.write(message)
 
-  defp overwrite_loop(prompt) do
-    receive do
-      {:done, parent, ref} ->
-        IO.write("\e[2K\r")
-        send(parent, {ref, :done})
-    after
-      1 ->
-        IO.write("\e[2K\r#{prompt}")
-        overwrite_loop(prompt)
+    case :io.get_password() do
+      {:error, _} ->
+        IO.gets("") |> String.trim()
+
+      password when is_list(password) ->
+        to_string(password) |> String.trim()
+
+      password when is_binary(password) ->
+        String.trim(password)
     end
   end
 
