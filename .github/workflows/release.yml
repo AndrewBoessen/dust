@@ -263,10 +263,16 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
       - name: Install vcpkg dependencies
         run: |
           vcpkg install snappy:x64-windows
           echo "CMAKE_PREFIX_PATH=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows" >> $env:GITHUB_ENV
+        shell: pwsh
 
       - name: Cache deps
         uses: actions/cache@v4
