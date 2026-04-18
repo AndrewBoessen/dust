@@ -30,4 +30,4 @@ tsnet-state*
 /dust_dev/
 
 # CLI binary
-dustctl
+dustctl_*

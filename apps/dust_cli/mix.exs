@@ -18,6 +18,7 @@ defmodule Dust.Cli.MixProject do
 
   def application do
     [
+      mod: {Dust.CLI.Application, []},
       extra_applications: [:logger, :inets, :ssl, :crypto]
     ]
   end

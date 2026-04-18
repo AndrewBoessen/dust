@@ -63,16 +63,12 @@ defmodule Dust.CLI do
   # Commands that DO NOT require Tailscale connectivity
   @no_network_required ~w(init status auth daemon unlock lock config help version)
 
-  def main(args) do
-    # Start required OTP applications for :httpc
-    Application.ensure_all_started(:inets)
-    Application.ensure_all_started(:ssl)
-
+  @doc false
+  def run(args) do
     args
     |> parse_global_opts()
     |> maybe_check_network()
     |> dispatch()
-    |> System.halt()
   end
 
   # ── Global option parsing ──────────────────────────────────────────────
