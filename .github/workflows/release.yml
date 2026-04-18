@@ -452,9 +452,9 @@ jobs:
             artifacts/dust-server-macos-x86_64.tar.gz
             artifacts/dust-server-macos-aarch64.tar.gz
             artifacts/dust-server-windows-x86_64.zip
-            artifacts/dustctl-linux_x86_64
-            artifacts/dustctl-linux_aarch64
-            artifacts/dustctl-macos_x86_64
-            artifacts/dustctl-macos_aarch64
-            artifacts/dustctl-windows_x86_64.exe
+            artifacts/dustctl_linux_x86_64
+            artifacts/dustctl_linux_aarch64
+            artifacts/dustctl_macos_x86_64
+            artifacts/dustctl_macos_aarch64
+            artifacts/dustctl_windows_x86_64.exe
             artifacts/SHA256SUMS.txt
