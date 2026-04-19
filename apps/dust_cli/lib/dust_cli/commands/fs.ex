@@ -239,10 +239,16 @@ defmodule Dust.CLI.Commands.Fs do
   # ── Helpers ────────────────────────────────────────────────────────────
 
   defp find_root_dir(config) do
-    # Try to find the root directory by listing the config
-    case Client.get(config, "/api/v1/config") do
-      {200, {:ok, %{"config" => %{"root_dir_id" => id}}}} when is_binary(id) -> id
-      _ -> nil
+    # Search the filesystem dirs for the root directory with name /
+    case Client.get(config, "/api/v1/fs/dirs") do
+      {200, {:ok, %{"dirs" => dirs}}} when is_list(dirs) ->
+        Enum.find_value(dirs, fn
+          %{"name" => "/", "id" => id} -> id
+          _ -> nil
+        end)
+
+      _ ->
+        nil
     end
   end
 

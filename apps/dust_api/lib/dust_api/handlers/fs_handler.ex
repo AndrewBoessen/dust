@@ -39,6 +39,22 @@ defmodule Dust.Api.Handlers.FsHandler do
     end
   end
 
+  @doc "List all directories."
+  @spec dirs(Plug.Conn.t()) :: Plug.Conn.t()
+  def dirs(conn) do
+    all = FileSystem.all_dirs()
+    formatted = Enum.map(all, fn {id, entry} ->
+      %{
+        id: id,
+        name: entry.name,
+        parent_id: entry.parent_id,
+        created_at: to_string(entry.created_at)
+      }
+    end)
+
+    json_response(conn, 200, %{dirs: formatted})
+  end
+
   @doc "Create a new directory."
   @spec mkdir(Plug.Conn.t()) :: Plug.Conn.t()
   def mkdir(conn) do

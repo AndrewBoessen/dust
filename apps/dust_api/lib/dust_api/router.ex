@@ -42,6 +42,10 @@ defmodule Dust.Api.Router do
     Dust.Api.Handlers.FsHandler.list(conn, dir_id)
   end
 
+  get "/api/v1/fs/dirs" do
+    Dust.Api.Handlers.FsHandler.dirs(conn)
+  end
+
   post "/api/v1/fs/mkdir" do
     Dust.Api.Handlers.FsHandler.mkdir(conn)
   end
