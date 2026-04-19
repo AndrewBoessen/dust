@@ -14,6 +14,7 @@ defmodule Dust.CLI.Commands.Fs do
   # ── ls ─────────────────────────────────────────────────────────────────
 
   def ls(config, args) do
+    require_unlocked!(config)
     {opts, rest, _} = OptionParser.parse(args, strict: [long: :boolean], aliases: [l: :long])
 
     dir_id =
@@ -87,6 +88,7 @@ defmodule Dust.CLI.Commands.Fs do
   # ── mkdir ──────────────────────────────────────────────────────────────
 
   def mkdir(config, args) do
+    require_unlocked!(config)
     {opts, rest, _} = OptionParser.parse(args, strict: [parent: :string], aliases: [p: :parent])
 
     case rest do
@@ -121,6 +123,7 @@ defmodule Dust.CLI.Commands.Fs do
   # ── upload ─────────────────────────────────────────────────────────────
 
   def upload(config, args) do
+    require_unlocked!(config)
     {opts, rest, _} =
       OptionParser.parse(args,
         strict: [dir: :string, name: :string],
@@ -173,6 +176,7 @@ defmodule Dust.CLI.Commands.Fs do
   # ── download ───────────────────────────────────────────────────────────
 
   def download(config, args) do
+    require_unlocked!(config)
     case args do
       [file_id, dest_path | _] ->
         expanded = Path.expand(dest_path)
@@ -209,6 +213,7 @@ defmodule Dust.CLI.Commands.Fs do
   # ── rm ─────────────────────────────────────────────────────────────────
 
   def rm(config, args) do
+    require_unlocked!(config)
     case args do
       [id | _] ->
         case Client.delete(config, "/api/v1/fs/rm/#{id}") do
@@ -237,6 +242,25 @@ defmodule Dust.CLI.Commands.Fs do
   end
 
   # ── Helpers ────────────────────────────────────────────────────────────
+
+  defp require_unlocked!(config) do
+    case Client.get(config, "/api/v1/status") do
+      {200, {:ok, %{"key_store" => "unlocked"}}} ->
+        :ok
+
+      {200, {:ok, %{"key_store" => "locked"}}} ->
+        Formatter.info("Key store is locked. Please unlock it to proceed.")
+
+        case Dust.CLI.Commands.Auth.unlock(config, []) do
+          0 -> :ok
+          _ -> return_exit(1)
+        end
+
+      _ ->
+        Formatter.warning("Cannot verify key store status. Is the daemon running?")
+        return_exit(1)
+    end
+  end
 
   defp find_root_dir(config) do
     # Try to find the root directory by listing the config
