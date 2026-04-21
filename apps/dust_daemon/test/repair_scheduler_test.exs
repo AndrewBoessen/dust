@@ -30,7 +30,20 @@ defmodule Dust.Daemon.RepairSchedulerTest do
       end
     end)
 
-    :ok
+    root_dir_id =
+      case Dust.Mesh.FileSystem.mkdir(nil, "/") do
+        {:ok, id} ->
+          id
+
+        {:error, :root_already_exists} ->
+          {id, _} =
+            Dust.Mesh.FileSystem.all_dirs()
+            |> Enum.find(fn {_id, dir} -> dir.parent_id == nil end)
+
+          id
+      end
+
+    [root_dir_id: root_dir_id]
   end
 
   setup %{tmp_dir: tmp_dir} do
@@ -41,13 +54,12 @@ defmodule Dust.Daemon.RepairSchedulerTest do
   # ── Helpers ─────────────────────────────────────────────────────────────
 
   # Uploads a small file and returns {file_uuid, chunk_hashes}
-  defp upload_test_file(tmp_dir, name) do
+  defp upload_test_file(tmp_dir, root_dir_id, name) do
     content = :crypto.strong_rand_bytes(1024)
     source_path = Path.join(tmp_dir, name)
     File.write!(source_path, content)
 
-    {:ok, dir_id} = Dust.Mesh.FileSystem.mkdir(nil, "/")
-    {:ok, file_uuid} = Dust.Daemon.FileSystem.upload(source_path, dir_id, name)
+    {:ok, file_uuid} = Dust.Daemon.FileSystem.upload(source_path, root_dir_id, name)
 
     %{chunks: chunks} = FileIndex.get(file_uuid)
     {file_uuid, chunks}
@@ -66,8 +78,8 @@ defmodule Dust.Daemon.RepairSchedulerTest do
   # ── Integrity Tests (Phase 1) ──────────────────────────────────────────
 
   describe "phase 1 — integrity verification" do
-    test "corrupted shard is detected, removed, and reconstructed", %{tmp_dir: tmp_dir} do
-      {_file_uuid, [chunk_hash | _]} = upload_test_file(tmp_dir, "integrity_corrupt.bin")
+    test "corrupted shard is detected, removed, and reconstructed", %{tmp_dir: tmp_dir, root_dir_id: root_dir_id} do
+      {_file_uuid, [chunk_hash | _]} = upload_test_file(tmp_dir, root_dir_id, "integrity_corrupt.bin")
 
       # Shard exists and is valid
       assert Storage.has_shard?(chunk_hash, 0)
@@ -93,8 +105,8 @@ defmodule Dust.Daemon.RepairSchedulerTest do
       end
     end
 
-    test "valid shards are preserved during integrity check", %{tmp_dir: tmp_dir} do
-      {_file_uuid, [chunk_hash | _]} = upload_test_file(tmp_dir, "integrity_valid.bin")
+    test "valid shards are preserved during integrity check", %{tmp_dir: tmp_dir, root_dir_id: root_dir_id} do
+      {_file_uuid, [chunk_hash | _]} = upload_test_file(tmp_dir, root_dir_id, "integrity_valid.bin")
 
       # All shards should exist before sweep
       assert Storage.has_shard?(chunk_hash, 0)
@@ -110,8 +122,8 @@ defmodule Dust.Daemon.RepairSchedulerTest do
   # ── Under-Replication Tests (Phase 2) ───────────────────────────────────
 
   describe "phase 2 — under-replication repair" do
-    test "does not clone shards that are already held locally", %{tmp_dir: tmp_dir} do
-      {_file_uuid, [chunk_hash | _]} = upload_test_file(tmp_dir, "clone_already_local.bin")
+    test "does not clone shards that are already held locally", %{tmp_dir: tmp_dir, root_dir_id: root_dir_id} do
+      {_file_uuid, [chunk_hash | _]} = upload_test_file(tmp_dir, root_dir_id, "clone_already_local.bin")
 
       # Node already holds shard 0 (from upload)
       assert Storage.has_shard?(chunk_hash, 0)
@@ -123,8 +135,8 @@ defmodule Dust.Daemon.RepairSchedulerTest do
       assert Storage.has_shard?(chunk_hash, 0)
     end
 
-    test "does not attempt to clone when this node is the only holder", %{tmp_dir: tmp_dir} do
-      {_file_uuid, [_chunk_hash | _]} = upload_test_file(tmp_dir, "clone_sole_holder.bin")
+    test "does not attempt to clone when this node is the only holder", %{tmp_dir: tmp_dir, root_dir_id: root_dir_id} do
+      {_file_uuid, [_chunk_hash | _]} = upload_test_file(tmp_dir, root_dir_id, "clone_sole_holder.bin")
 
       # Only this node holds the shards — no remote source available
       # In single-node test, online_nodes returns [] so there's nothing to clone from
@@ -140,8 +152,8 @@ defmodule Dust.Daemon.RepairSchedulerTest do
   # ── Reconstruction Tests (Phase 3) ──────────────────────────────────────
 
   describe "phase 3 — missing shard reconstruction" do
-    test "reconstruction is skipped when no shards are missing", %{tmp_dir: tmp_dir} do
-      {_file_uuid, _chunks} = upload_test_file(tmp_dir, "recon_all_present.bin")
+    test "reconstruction is skipped when no shards are missing", %{tmp_dir: tmp_dir, root_dir_id: root_dir_id} do
+      {_file_uuid, _chunks} = upload_test_file(tmp_dir, root_dir_id, "recon_all_present.bin")
 
       RepairScheduler.sweep_now()
       Process.sleep(500)

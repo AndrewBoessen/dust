@@ -36,7 +36,20 @@ defmodule Dust.Daemon.FileSystemTest do
       end
     end)
 
-    :ok
+    root_dir_id =
+      case Dust.Mesh.FileSystem.mkdir(nil, "/") do
+        {:ok, id} ->
+          id
+
+        {:error, :root_already_exists} ->
+          {id, _} =
+            Dust.Mesh.FileSystem.all_dirs()
+            |> Enum.find(fn {_id, dir} -> dir.parent_id == nil end)
+
+          id
+      end
+
+    [root_dir_id: root_dir_id]
   end
 
   setup %{tmp_dir: tmp_dir} do
@@ -47,14 +60,13 @@ defmodule Dust.Daemon.FileSystemTest do
 
   describe "upload/3" do
     test "successfully uploads a real file, producing a valid UUID and storing shards", %{
-      tmp_dir: tmp_dir
+      tmp_dir: tmp_dir,
+      root_dir_id: dest_dir_id
     } do
       # 1. Create a dummy file to upload
       local_path = Path.join(tmp_dir, "test_upload.txt")
       content = :crypto.strong_rand_bytes(1024)
       File.write!(local_path, content)
-
-      {:ok, dest_dir_id} = Dust.Mesh.FileSystem.mkdir(nil, "/")
 
       # 2. Perform the actual upload
       assert {:ok, file_uuid} = FileSystem.upload(local_path, dest_dir_id, "test_upload.txt")
@@ -84,14 +96,16 @@ defmodule Dust.Daemon.FileSystemTest do
       assert {:error, :enoent} = FileSystem.upload(missing_path, "some-dir-id", "ghost.bin")
     end
 
-    test "progress notifications are broadcast during upload", %{tmp_dir: tmp_dir} do
+    test "progress notifications are broadcast during upload", %{
+      tmp_dir: tmp_dir,
+      root_dir_id: dest_dir_id
+    } do
       {:ok, _} = FileSystem.subscribe_upload_progress()
 
       content = :crypto.strong_rand_bytes(1024)
       source_path = Path.join(tmp_dir, "upload_progress.bin")
       File.write!(source_path, content)
 
-      {:ok, dest_dir_id} = Dust.Mesh.FileSystem.mkdir(nil, "/")
       assert {:ok, file_uuid} = FileSystem.upload(source_path, dest_dir_id, "progress.bin")
 
       # Single chunk file → should receive exactly one progress message
@@ -100,13 +114,14 @@ defmodule Dust.Daemon.FileSystemTest do
   end
 
   describe "download/2" do
-    test "round-trip: upload then download produces identical content", %{tmp_dir: tmp_dir} do
+    test "round-trip: upload then download produces identical content", %{
+      tmp_dir: tmp_dir,
+      root_dir_id: dest_dir_id
+    } do
       # Create source file
       original_content = :crypto.strong_rand_bytes(2048)
       source_path = Path.join(tmp_dir, "source.bin")
       File.write!(source_path, original_content)
-
-      {:ok, dest_dir_id} = Dust.Mesh.FileSystem.mkdir(nil, "/")
 
       # Upload
       assert {:ok, file_uuid} = FileSystem.upload(source_path, dest_dir_id, "source.bin")
@@ -119,14 +134,15 @@ defmodule Dust.Daemon.FileSystemTest do
       assert File.read!(download_path) == original_content
     end
 
-    test "multi-chunk round-trip with file larger than 4 MB", %{tmp_dir: tmp_dir} do
+    test "multi-chunk round-trip with file larger than 4 MB", %{
+      tmp_dir: tmp_dir,
+      root_dir_id: dest_dir_id
+    } do
       # 4 MB chunk size + extra to force at least 2 chunks
       size = 4 * 1024 * 1024 + 1024
       original_content = :crypto.strong_rand_bytes(size)
       source_path = Path.join(tmp_dir, "large_source.bin")
       File.write!(source_path, original_content)
-
-      {:ok, dest_dir_id} = Dust.Mesh.FileSystem.mkdir(nil, "/")
 
       # Upload
       assert {:ok, file_uuid} = FileSystem.upload(source_path, dest_dir_id, "large.bin")
@@ -150,13 +166,12 @@ defmodule Dust.Daemon.FileSystemTest do
                FileSystem.download("nonexistent-uuid", download_path)
     end
 
-    test "fitness model is updated after download", %{tmp_dir: tmp_dir} do
+    test "fitness model is updated after download", %{tmp_dir: tmp_dir, root_dir_id: dest_dir_id} do
       # Upload a file
       content = :crypto.strong_rand_bytes(1024)
       source_path = Path.join(tmp_dir, "fitness_test.bin")
       File.write!(source_path, content)
 
-      {:ok, dest_dir_id} = Dust.Mesh.FileSystem.mkdir(nil, "/")
       assert {:ok, file_uuid} = FileSystem.upload(source_path, dest_dir_id, "fitness.bin")
 
       # Download it — this should trigger fitness observations for node()
@@ -172,7 +187,10 @@ defmodule Dust.Daemon.FileSystemTest do
              "success_rate should increase after successful shard fetches"
     end
 
-    test "progress notifications are broadcast during download", %{tmp_dir: tmp_dir} do
+    test "progress notifications are broadcast during download", %{
+      tmp_dir: tmp_dir,
+      root_dir_id: dest_dir_id
+    } do
       # Subscribe to progress
       {:ok, _} = FileSystem.subscribe_download_progress()
 
@@ -181,7 +199,6 @@ defmodule Dust.Daemon.FileSystemTest do
       source_path = Path.join(tmp_dir, "progress_test.bin")
       File.write!(source_path, content)
 
-      {:ok, dest_dir_id} = Dust.Mesh.FileSystem.mkdir(nil, "/")
       assert {:ok, file_uuid} = FileSystem.upload(source_path, dest_dir_id, "progress.bin")
 
       # Download

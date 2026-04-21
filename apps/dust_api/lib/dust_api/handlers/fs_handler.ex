@@ -2,11 +2,12 @@ defmodule Dust.Api.Handlers.FsHandler do
   @moduledoc """
   Handles file system operations:
 
-    - `GET    /api/v1/fs/ls/:dir_id`  — list directory contents
-    - `POST   /api/v1/fs/mkdir`       — create a directory
-    - `POST   /api/v1/fs/upload`      — upload a file (multipart or JSON)
-    - `POST   /api/v1/fs/download`    — download a file to a local path
-    - `DELETE /api/v1/fs/rm/:id`      — delete a file or directory
+    - `GET    /api/v1/fs/ls/:dir_id`    — list directory contents
+    - `GET    /api/v1/fs/stat/:file_id` — get file metadata
+    - `POST   /api/v1/fs/mkdir`         — create a directory
+    - `POST   /api/v1/fs/upload`        — upload a file (multipart or JSON)
+    - `POST   /api/v1/fs/download`      — download a file to a local path
+    - `DELETE /api/v1/fs/rm/:id`        — delete a file or directory
   """
 
   import Plug.Conn
@@ -39,24 +40,50 @@ defmodule Dust.Api.Handlers.FsHandler do
     end
   end
 
+  @doc "Return metadata for a single file."
+  @spec stat(Plug.Conn.t(), String.t()) :: Plug.Conn.t()
+  def stat(conn, file_id) do
+    case FileSystem.stat(file_id) do
+      nil ->
+        json_response(conn, 404, %{error: "file_not_found"})
+
+      meta ->
+        file =
+          meta
+          |> Map.take([:id, :name, :dir_id, :mime, :size, :checksum, :created_at])
+          |> Enum.into(%{}, fn {k, v} -> {Atom.to_string(k), to_string(v)} end)
+
+        json_response(conn, 200, %{file: file})
+    end
+  end
+
   @doc "Create a new directory."
   @spec mkdir(Plug.Conn.t()) :: Plug.Conn.t()
   def mkdir(conn) do
     case conn.body_params do
-      %{"parent_id" => parent_id, "name" => name} ->
+      %{"name" => name} = params ->
+        parent_id = Map.get(params, "parent_id")
+
         case FileSystem.mkdir(parent_id, name) do
           {:ok, dir_id} ->
             json_response(conn, 201, %{dir_id: dir_id})
+
+          {:error, :already_exists} ->
+            json_response(conn, 409, %{error: "directory_already_exists"})
+
+          {:error, :root_already_exists} ->
+            {existing_id, _} =
+              FileSystem.all_dirs()
+              |> Enum.find(fn {_id, dir} -> dir.parent_id == nil end)
+
+            json_response(conn, 409, %{error: "root_already_exists", dir_id: existing_id})
 
           {:error, reason} ->
             json_response(conn, 400, %{error: inspect(reason)})
         end
 
       _ ->
-        json_response(conn, 400, %{
-          error: "missing_fields",
-          message: "'parent_id' and 'name' are required"
-        })
+        json_response(conn, 400, %{error: "missing_fields", message: "'name' is required"})
     end
   end
 

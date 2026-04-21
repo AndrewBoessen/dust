@@ -30,7 +30,20 @@ defmodule Dust.Daemon.GarbageCollectorTest do
       end
     end)
 
-    :ok
+    root_dir_id =
+      case Dust.Mesh.FileSystem.mkdir(nil, "/") do
+        {:ok, id} ->
+          id
+
+        {:error, :root_already_exists} ->
+          {id, _} =
+            Dust.Mesh.FileSystem.all_dirs()
+            |> Enum.find(fn {_id, dir} -> dir.parent_id == nil end)
+
+          id
+      end
+
+    [root_dir_id: root_dir_id]
   end
 
   setup %{tmp_dir: tmp_dir} do
@@ -41,13 +54,12 @@ defmodule Dust.Daemon.GarbageCollectorTest do
   # ── Helpers ─────────────────────────────────────────────────────────────
 
   # Uploads a small file and returns {file_uuid, chunk_hashes}
-  defp upload_test_file(tmp_dir, name \\ "gc_test.bin") do
+  defp upload_test_file(tmp_dir, root_dir_id, name \\ "gc_test.bin") do
     content = :crypto.strong_rand_bytes(1024)
     source_path = Path.join(tmp_dir, name)
     File.write!(source_path, content)
 
-    {:ok, dir_id} = Dust.Mesh.FileSystem.mkdir(nil, "/")
-    {:ok, file_uuid} = Dust.Daemon.FileSystem.upload(source_path, dir_id, name)
+    {:ok, file_uuid} = Dust.Daemon.FileSystem.upload(source_path, root_dir_id, name)
 
     %{chunks: chunks} = FileIndex.get(file_uuid)
     {file_uuid, chunks}
@@ -91,8 +103,8 @@ defmodule Dust.Daemon.GarbageCollectorTest do
       assert stats.last_orphans_removed >= 2
     end
 
-    test "preserves shards that are referenced by a file", %{tmp_dir: tmp_dir} do
-      {_file_uuid, [chunk_hash | _]} = upload_test_file(tmp_dir)
+    test "preserves shards that are referenced by a file", %{tmp_dir: tmp_dir, root_dir_id: root_dir_id} do
+      {_file_uuid, [chunk_hash | _]} = upload_test_file(tmp_dir, root_dir_id)
 
       # Shards exist before sweep
       assert Storage.has_shard?(chunk_hash, 0)
@@ -109,9 +121,10 @@ defmodule Dust.Daemon.GarbageCollectorTest do
 
   describe "replication sweep" do
     test "removes local shard when replication factor is met by other online nodes", %{
-      tmp_dir: tmp_dir
+      tmp_dir: tmp_dir,
+      root_dir_id: root_dir_id
     } do
-      {_file_uuid, [chunk_hash | _]} = upload_test_file(tmp_dir, "repl_test.bin")
+      {_file_uuid, [chunk_hash | _]} = upload_test_file(tmp_dir, root_dir_id, "repl_test.bin")
 
       # Register 2 other nodes as holding shard 0
       other_node_a = :"fake_a@127.0.0.1"
@@ -145,9 +158,10 @@ defmodule Dust.Daemon.GarbageCollectorTest do
     end
 
     test "preserves shard when fewer than replication_factor other online nodes hold it", %{
-      tmp_dir: tmp_dir
+      tmp_dir: tmp_dir,
+      root_dir_id: root_dir_id
     } do
-      {_file_uuid, [chunk_hash | _]} = upload_test_file(tmp_dir, "under_repl.bin")
+      {_file_uuid, [chunk_hash | _]} = upload_test_file(tmp_dir, root_dir_id, "under_repl.bin")
 
       # Only 1 other node registered (not online in test env)
       other_node = :"solo_peer@127.0.0.1"
@@ -166,9 +180,9 @@ defmodule Dust.Daemon.GarbageCollectorTest do
   # ── Combined Sweep Tests ────────────────────────────────────────────────
 
   describe "combined sweep" do
-    test "handles mix of orphaned and referenced shards", %{tmp_dir: tmp_dir} do
+    test "handles mix of orphaned and referenced shards", %{tmp_dir: tmp_dir, root_dir_id: root_dir_id} do
       # Upload a real file — its shards are referenced
-      {_file_uuid, [real_chunk | _]} = upload_test_file(tmp_dir, "mixed.bin")
+      {_file_uuid, [real_chunk | _]} = upload_test_file(tmp_dir, root_dir_id, "mixed.bin")
 
       # Plant an orphan
       orphan_hash = "orphan_mixed_#{System.unique_integer([:positive])}"

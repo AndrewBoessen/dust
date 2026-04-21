@@ -40,7 +40,8 @@ defmodule Dust.Utilities.Config do
     stale_node_timeout_ms: 86_400_000,
     max_reconstruct_per_sweep: 5,
     api_port: 4884,
-    api_bind: "127.0.0.1"
+    api_bind: "127.0.0.1",
+    root_dir_id: ""
   }
 
   @boot_only_keys [:persist_dir, :erasure_k, :erasure_m]
@@ -50,7 +51,8 @@ defmodule Dust.Utilities.Config do
     :stale_node_timeout_ms,
     :max_reconstruct_per_sweep,
     :api_port,
-    :api_bind
+    :api_bind,
+    :root_dir_id
   ]
   @all_keys @boot_only_keys ++ @runtime_keys
 
@@ -83,6 +85,9 @@ defmodule Dust.Utilities.Config do
   #
   # api_bind              — IP address the HTTP API binds to.
   #                         Use "127.0.0.1" (default) to restrict to localhost.
+  #
+  # root_dir_id           — UUID of the root filesystem directory.
+  #                         Set automatically during setup or can be empty.
   #
   """
 
@@ -123,6 +128,10 @@ defmodule Dust.Utilities.Config do
   @doc "IP address the HTTP API binds to."
   @spec api_bind() :: String.t()
   def api_bind, do: get(:api_bind)
+
+  @doc "UUID of the root directory."
+  @spec root_dir_id() :: String.t()
+  def root_dir_id, do: get(:root_dir_id)
 
   @doc "Total shard count (K + M)."
   @spec total_shards() :: pos_integer()
@@ -313,6 +322,7 @@ defmodule Dust.Utilities.Config do
     for {k, v} <- map,
         key = safe_to_atom(k),
         key in @all_keys,
+        not is_nil(v),
         into: %{} do
       {key, v}
     end
@@ -357,5 +367,6 @@ defmodule Dust.Utilities.Config do
   defp validate_key(:persist_dir, v) when is_binary(v) and v != "", do: :ok
   defp validate_key(:api_port, v) when is_integer(v) and v > 0 and v <= 65535, do: :ok
   defp validate_key(:api_bind, v) when is_binary(v) and v != "", do: :ok
+  defp validate_key(:root_dir_id, v) when is_binary(v), do: :ok
   defp validate_key(key, value), do: {:error, {key, :invalid, value}}
 end

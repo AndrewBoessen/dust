@@ -117,26 +117,34 @@ defmodule Dust.Mesh.FileSystem do
   parent ID does not exist.
   """
   @spec mkdir(uuid() | nil, String.t()) ::
-          {:ok, uuid()} | {:error, :parent_not_found | :crdt_unavailable}
+          {:ok, uuid()}
+          | {:error, :parent_not_found | :already_exists | :root_already_exists | :crdt_unavailable}
   def mkdir(parent_id, name) when is_binary(name) do
-    if parent_id != nil and DirMap.get(parent_id) == nil do
-      {:error, :parent_not_found}
-    else
-      id = generate_uuid()
+    cond do
+      parent_id != nil and DirMap.get(parent_id) == nil ->
+        {:error, :parent_not_found}
 
-      entry = %DirMap{
-        name: name,
-        parent_id: parent_id,
-        created_at: DateTime.utc_now()
-      }
+      parent_id == nil and
+          DirMap.all() |> Enum.any?(fn {_id, dir} -> dir.parent_id == nil end) ->
+        {:error, :root_already_exists}
 
-      case DirMap.put(id, entry) do
-        {:error, :crdt_unavailable} ->
-          {:error, :crdt_unavailable}
+      DirMap.all()
+      |> Enum.any?(fn {_id, dir} -> dir.parent_id == parent_id and dir.name == name end) ->
+        {:error, :already_exists}
 
-        :ok ->
-          {:ok, id}
-      end
+      true ->
+        id = generate_uuid()
+
+        entry = %DirMap{
+          name: name,
+          parent_id: parent_id,
+          created_at: DateTime.utc_now()
+        }
+
+        case DirMap.put(id, entry) do
+          {:error, :crdt_unavailable} -> {:error, :crdt_unavailable}
+          :ok -> {:ok, id}
+        end
     end
   end
 
