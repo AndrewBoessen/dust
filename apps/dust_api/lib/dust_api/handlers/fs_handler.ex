@@ -155,7 +155,7 @@ defmodule Dust.Api.Handlers.FsHandler do
 
   defp serialize_meta(meta) when is_map(meta) do
     meta
-    |> Map.take([:type, :size, :mime, :checksum, :created_at, :updated_at])
+    |> Map.take([:id, :name, :size, :mime, :checksum, :created_at])
     |> Enum.into(%{}, fn {k, v} -> {k, to_string(v)} end)
   end
 
