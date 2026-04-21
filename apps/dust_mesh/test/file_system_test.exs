@@ -249,8 +249,9 @@ defmodule Dust.Mesh.FileSystemTest do
 
   describe "mv_file/3" do
     test "moves a file between directories" do
-      {:ok, src} = FileSystem.mkdir(nil, "src")
-      {:ok, dst} = FileSystem.mkdir(nil, "dst")
+      {:ok, root} = FileSystem.mkdir(nil, "root")
+      {:ok, src} = FileSystem.mkdir(root, "src")
+      {:ok, dst} = FileSystem.mkdir(root, "dst")
       {:ok, fid} = FileSystem.put_file(src, "f.txt")
 
       assert :ok = FileSystem.mv_file(fid, src, dst)
@@ -260,8 +261,9 @@ defmodule Dust.Mesh.FileSystemTest do
     end
 
     test "returns {:error, :not_found} when file does not exist" do
-      {:ok, src} = FileSystem.mkdir(nil, "src")
-      {:ok, dst} = FileSystem.mkdir(nil, "dst")
+      {:ok, root} = FileSystem.mkdir(nil, "root")
+      {:ok, src} = FileSystem.mkdir(root, "src")
+      {:ok, dst} = FileSystem.mkdir(root, "dst")
 
       assert {:error, :not_found} = FileSystem.mv_file("missing", src, dst)
     end

@@ -322,6 +322,7 @@ defmodule Dust.Utilities.Config do
     for {k, v} <- map,
         key = safe_to_atom(k),
         key in @all_keys,
+        not is_nil(v),
         into: %{} do
       {key, v}
     end
