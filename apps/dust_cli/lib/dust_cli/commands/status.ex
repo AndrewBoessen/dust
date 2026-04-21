@@ -26,12 +26,12 @@ defmodule Dust.CLI.Commands.Status do
   end
 
   defp display_status(status) do
-    ready = if status["ready"], do: "✓ ready", else: "⏳ bootstrapping"
+    ready = if status["ready"], do: "ready", else: "bootstrapping"
     key_store = format_key_store(status["key_store"])
     uptime = format_uptime(status["uptime_ms"])
 
     network = status["network"] || %{}
-    net_status = if network["connected"], do: "🟢 connected", else: "🔴 disconnected"
+    net_status = if network["connected"], do: "connected", else: "disconnected"
 
     Formatter.heading("Node Status")
     IO.puts("")
@@ -54,11 +54,10 @@ defmodule Dust.CLI.Commands.Status do
 
     if status["peers"] > 0 do
       IO.puts("")
-      Formatter.dim("  Connected peers:")
+      Formatter.dim("Connected peers:")
 
-      status["peer_names"]
-      |> Enum.each(fn name ->
-        IO.puts("    • #{name}")
+      Enum.each(status["peer_names"], fn name ->
+        IO.puts("  • #{name}")
       end)
     end
 
@@ -66,7 +65,7 @@ defmodule Dust.CLI.Commands.Status do
 
     if disk do
       IO.puts("")
-      Formatter.dim("  Disk:")
+      Formatter.dim("Disk:")
 
       Formatter.kv([
         {"Quota", format_bytes(disk["quota_bytes"])},
@@ -76,9 +75,9 @@ defmodule Dust.CLI.Commands.Status do
     end
   end
 
-  defp format_key_store("unlocked"), do: "🔓 unlocked"
-  defp format_key_store("locked"), do: "🔒 locked"
-  defp format_key_store(other), do: "⚠ #{other}"
+  defp format_key_store("unlocked"), do: "unlocked"
+  defp format_key_store("locked"), do: "locked"
+  defp format_key_store(other), do: other || "unknown"
 
   defp format_uptime(nil), do: "unknown"
 

@@ -37,6 +37,7 @@ defmodule Dust.CLI.Commands.Gc do
           {"Replicas removed", body["replicas_removed"] || 0}
         ])
 
+        IO.puts("")
         0
 
       {:error, {:failed_connect, _}} ->
@@ -57,7 +58,7 @@ defmodule Dust.CLI.Commands.Gc do
     case Client.post(config, "/api/v1/gc/sweep") do
       {202, _} ->
         Formatter.success("GC sweep triggered")
-        Formatter.dim("  Run 'dustctl gc stats' to see results after completion.")
+        Formatter.dim("Run 'dustctl gc stats' to see results after completion.")
         0
 
       {:error, {:failed_connect, _}} ->

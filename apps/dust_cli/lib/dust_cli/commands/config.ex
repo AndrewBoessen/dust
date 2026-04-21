@@ -31,7 +31,7 @@ defmodule Dust.CLI.Commands.Config do
 
         Formatter.kv(pairs)
         IO.puts("")
-        Formatter.dim("  Update with: dustctl config set <key> <value>")
+        Formatter.dim("Update with: dustctl config set <key> <value>")
         0
 
       {:error, {:failed_connect, _}} ->

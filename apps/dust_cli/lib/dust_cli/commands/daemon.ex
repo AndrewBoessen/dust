@@ -21,9 +21,14 @@ defmodule Dust.CLI.Commands.Daemon do
         {_output, 0} ->
           Formatter.success("Daemon started")
 
+          Owl.Spinner.start(id: :daemon_ready, labels: %{processing: "Waiting for daemon to become ready..."})
+
           case wait_ready(config, 30) do
-            :ok -> Formatter.success("Daemon is ready")
-            :timeout -> Formatter.warning("Daemon started but readiness check timed out")
+            :ok ->
+              Owl.Spinner.stop(id: :daemon_ready, resolution: :ok, label: "Daemon is ready")
+
+            :timeout ->
+              Owl.Spinner.stop(id: :daemon_ready, resolution: :error, label: "Daemon started but readiness check timed out")
           end
 
           0
@@ -37,10 +42,10 @@ defmodule Dust.CLI.Commands.Daemon do
       Formatter.error("Release binary not found")
       IO.puts("")
       IO.puts("  Build a release first:")
-      IO.puts("    MIX_ENV=prod mix release dust")
+      Owl.IO.puts(["    ", Owl.Data.tag("MIX_ENV=prod mix release dust", :bright)])
       IO.puts("")
       IO.puts("  Or start in development mode:")
-      IO.puts("    iex -S mix")
+      Owl.IO.puts(["    ", Owl.Data.tag("iex -S mix", :bright)])
       1
     end
   end
@@ -82,7 +87,6 @@ defmodule Dust.CLI.Commands.Daemon do
   def run(config, ["install" | _]) do
     Formatter.info("Installing Dust as a system service...")
 
-    # Use the API to install (requires daemon to be running)
     case Client.ping(config) do
       :ok ->
         install_service()
@@ -109,13 +113,9 @@ defmodule Dust.CLI.Commands.Daemon do
 
   defp find_release_bin do
     candidates = [
-      # Relative to escript location
       Path.expand("../dust", System.get_env("ESCRIPT_PATH") || "."),
-      # Common install locations
       "/usr/local/bin/dust",
-      # In the build directory
       Path.expand("_build/prod/rel/dust/bin/dust"),
-      # Current directory
       "bin/dust"
     ]
 
@@ -148,7 +148,7 @@ defmodule Dust.CLI.Commands.Daemon do
     case :os.type() do
       {:unix, :linux} -> uninstall_systemd()
       {:unix, :darwin} -> uninstall_launchd()
-      {:win32, _} -> uninstall_winsw()
+      {:win32, _} -> uninstall_winsv()
       other ->
         Formatter.error("Unsupported platform: #{inspect(other)}")
         1
@@ -218,7 +218,7 @@ defmodule Dust.CLI.Commands.Daemon do
     0
   end
 
-  defp uninstall_winsw do
+  defp uninstall_winsv do
     Formatter.info("Run 'dust-service.exe uninstall' from the install directory")
     0
   end

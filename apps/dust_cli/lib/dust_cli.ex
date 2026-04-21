@@ -95,7 +95,7 @@ defmodule Dust.CLI do
       no_color: Keyword.get(opts, :no_color, false)
     }
 
-    Formatter.set_color(!config.no_color)
+    if config.no_color, do: System.put_env("NO_COLOR", "1")
 
     {config, rest}
   end
@@ -146,7 +146,7 @@ defmodule Dust.CLI do
     IO.puts("  This command requires an active Tailscale connection.")
     IO.puts("  Run the following to authenticate:")
     IO.puts("")
-    IO.puts("    \e[1mdustctl auth\e[0m")
+    Owl.IO.puts(["    ", Owl.Data.tag("dustctl auth", :bright)])
     IO.puts("")
     1
   end

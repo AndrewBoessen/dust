@@ -10,7 +10,7 @@ defmodule Dust.CLI.Commands.Fs do
       dustctl stat PATH
   """
 
-  alias Dust.CLI.{Client, Formatter}
+  alias Dust.CLI.{Client, Formatter, Progress}
 
   # ── ls ─────────────────────────────────────────────────────────────────
 
@@ -64,36 +64,36 @@ defmodule Dust.CLI.Commands.Fs do
     files = body["files"] || []
 
     if dirs == [] and files == [] do
-      Formatter.dim("  (empty directory)")
+      Formatter.dim("(empty directory)")
     else
       if long do
         headers = ["Type", "Name", "ID", "Size"]
 
         dir_rows =
           Enum.map(dirs, fn d ->
-            ["📁 dir", d["name"] || "?", d["id"] || "?", "—"]
+            ["dir", d["name"] || "?", d["id"] || "?", "—"]
           end)
 
         file_rows =
           Enum.map(files, fn f ->
-            ["📄 file", f["name"] || "?", f["id"] || "?", f["size"] || "—"]
+            ["file", f["name"] || "?", f["id"] || "?", f["size"] || "—"]
           end)
 
         IO.puts("")
         Formatter.table(headers, dir_rows ++ file_rows)
       else
         Enum.each(dirs, fn d ->
-          IO.puts("  📁 #{d["name"] || d["id"]}/")
+          IO.puts("  #{d["name"] || d["id"]}/")
         end)
 
         Enum.each(files, fn f ->
-          IO.puts("  📄 #{f["name"] || f["id"]}")
+          IO.puts("  #{f["name"] || f["id"]}")
         end)
       end
     end
 
     IO.puts("")
-    Formatter.dim("  #{length(dirs)} directories, #{length(files)} files")
+    Formatter.dim("#{length(dirs)} directories, #{length(files)} files")
   end
 
   # ── mkdir ──────────────────────────────────────────────────────────────
@@ -270,15 +270,34 @@ defmodule Dust.CLI.Commands.Fs do
   end
 
   defp do_upload(config, local_path, dir_id, file_name) do
-    Formatter.info("Uploading #{file_name} (#{format_file_size(local_path)})...")
+    label = "#{file_name}  #{format_file_size(local_path)}"
 
-    case Client.post(config, "/api/v1/fs/upload", %{
-           local_path: local_path,
-           dir_id: dir_id,
-           file_name: file_name
-         }) do
+    ws = case Progress.start(config, label, :upload) do
+      {:ok, pid} -> pid
+      _ ->
+        Owl.Spinner.start(id: :upload, labels: %{processing: "Uploading #{label}..."})
+        nil
+    end
+
+    result =
+      Task.async(fn ->
+        Client.post(config, "/api/v1/fs/upload", %{
+          local_path: local_path,
+          dir_id: dir_id,
+          file_name: file_name
+        })
+      end)
+      |> Task.await(:infinity)
+
+    if ws do
+      Progress.stop(ws)
+    else
+      Owl.Spinner.stop(id: :upload, resolution: :ok)
+    end
+
+    case result do
       {201, {:ok, %{"file_id" => file_id}}} ->
-        Formatter.success("Uploaded #{file_name} (#{file_id})")
+        Formatter.success("#{file_name} uploaded (#{file_id})")
         0
 
       {_, {:ok, %{"error" => reason}}} ->
@@ -306,28 +325,7 @@ defmodule Dust.CLI.Commands.Fs do
 
         with :ok <- validate_path(remote_path),
              {:ok, file_id} <- resolve_file_path(config, remote_path) do
-          Formatter.info("Downloading #{remote_path} → #{expanded_dest}...")
-
-          case Client.post(config, "/api/v1/fs/download", %{
-                 file_id: file_id,
-                 dest_path: expanded_dest
-               }) do
-            {200, {:ok, %{"path" => path}}} ->
-              Formatter.success("Downloaded to #{path}")
-              0
-
-            {_, {:ok, %{"error" => reason}}} ->
-              Formatter.error("Download failed: #{reason}")
-              1
-
-            {:error, {:failed_connect, _}} ->
-              Formatter.daemon_unreachable()
-              1
-
-            other ->
-              Formatter.error("Unexpected response: #{inspect(other)}")
-              1
-          end
+          do_download(config, file_id, remote_path, expanded_dest)
         else
           {:error, :no_root} ->
             Formatter.error("No root directory found.")
@@ -351,6 +349,50 @@ defmodule Dust.CLI.Commands.Fs do
         Formatter.error("Missing arguments")
         IO.puts("  Usage: dustctl download REMOTE_PATH DEST")
         IO.puts("  Example: dustctl download /photos/img.jpg ./local.jpg")
+        1
+    end
+  end
+
+  defp do_download(config, file_id, remote_path, dest_path) do
+    label = "#{Path.basename(remote_path)} → #{dest_path}"
+
+    ws = case Progress.start(config, label, :download) do
+      {:ok, pid} -> pid
+      _ ->
+        Owl.Spinner.start(id: :download, labels: %{processing: "Downloading #{label}..."})
+        nil
+    end
+
+    result =
+      Task.async(fn ->
+        Client.post(config, "/api/v1/fs/download", %{
+          file_id: file_id,
+          dest_path: dest_path
+        })
+      end)
+      |> Task.await(:infinity)
+
+    if ws do
+      Progress.stop(ws)
+    else
+      Owl.Spinner.stop(id: :download, resolution: :ok)
+    end
+
+    case result do
+      {200, {:ok, %{"path" => path}}} ->
+        Formatter.success("Downloaded to #{path}")
+        0
+
+      {_, {:ok, %{"error" => reason}}} ->
+        Formatter.error("Download failed: #{reason}")
+        1
+
+      {:error, {:failed_connect, _}} ->
+        Formatter.daemon_unreachable()
+        1
+
+      other ->
+        Formatter.error("Unexpected response: #{inspect(other)}")
         1
     end
   end
