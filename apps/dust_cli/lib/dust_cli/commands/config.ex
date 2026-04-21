@@ -27,7 +27,7 @@ defmodule Dust.CLI.Commands.Config do
         pairs =
           cfg
           |> Enum.sort_by(fn {k, _} -> k end)
-          |> Enum.map(fn {k, v} -> {k, format_value(v)} end)
+          |> Enum.map(fn {k, v} -> {k, format_value(k, v)} end)
 
         Formatter.kv(pairs)
         IO.puts("")
@@ -94,15 +94,22 @@ defmodule Dust.CLI.Commands.Config do
 
   # ── Helpers ────────────────────────────────────────────────────────────
 
-  defp format_value(v) when is_integer(v) and v >= 1_000_000_000 do
+  @time_keys ["stale_node_timeout_ms"]
+
+  defp format_value(k, v) when k in @time_keys and is_integer(v) do
+    hours = Float.round(v / 3_600_000, 1)
+    "#{v} ms (#{hours} h)"
+  end
+
+  defp format_value(_k, v) when is_integer(v) and v >= 1_000_000_000 do
     "#{v} (#{Float.round(v / 1_000_000_000, 1)} GB)"
   end
 
-  defp format_value(v) when is_integer(v) and v >= 1_000_000 do
+  defp format_value(_k, v) when is_integer(v) and v >= 1_000_000 do
     "#{v} (#{Float.round(v / 1_000_000, 1)} MB)"
   end
 
-  defp format_value(v), do: to_string(v)
+  defp format_value(_k, v), do: to_string(v)
 
   defp parse_value(str) do
     cond do

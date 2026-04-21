@@ -149,14 +149,11 @@ defmodule Dust.CLI.Commands.Init do
     case Client.post(config, "/api/v1/fs/mkdir", %{parent_id: nil, name: "/"}) do
       {201, {:ok, %{"dir_id" => dir_id}}} ->
         Formatter.success("Created root directory: #{dir_id}")
-        # Save UUID to config so it persists after reboots
-        case Client.put(config, "/api/v1/config", %{root_dir_id: dir_id}) do
-          {200, _} -> Formatter.success("Saved root directory ID to configuration")
-          _ -> Formatter.warning("Failed to save root directory ID to configuration")
-        end
+        save_root_dir_id(config, dir_id)
 
-      {400, _} ->
-        Formatter.dim("  Root directory may already exist.")
+      {409, {:ok, %{"dir_id" => dir_id}}} ->
+        Formatter.dim("  Root directory already exists.")
+        save_root_dir_id(config, dir_id)
 
       _ ->
         :ok
@@ -193,6 +190,13 @@ defmodule Dust.CLI.Commands.Init do
   end
 
   # ── Helpers ────────────────────────────────────────────────────────────
+
+  defp save_root_dir_id(config, dir_id) do
+    case Client.put(config, "/api/v1/config", %{root_dir_id: dir_id}) do
+      {200, _} -> Formatter.success("Saved root directory ID to configuration")
+      _ -> Formatter.warning("Failed to save root directory ID to configuration")
+    end
+  end
 
   defp wait_for_daemon(_config, 0) do
     Formatter.error("Daemon did not become ready in time.")

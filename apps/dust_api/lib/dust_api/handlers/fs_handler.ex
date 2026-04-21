@@ -72,7 +72,11 @@ defmodule Dust.Api.Handlers.FsHandler do
             json_response(conn, 409, %{error: "directory_already_exists"})
 
           {:error, :root_already_exists} ->
-            json_response(conn, 409, %{error: "root_already_exists"})
+            {existing_id, _} =
+              FileSystem.all_dirs()
+              |> Enum.find(fn {_id, dir} -> dir.parent_id == nil end)
+
+            json_response(conn, 409, %{error: "root_already_exists", dir_id: existing_id})
 
           {:error, reason} ->
             json_response(conn, 400, %{error: inspect(reason)})
