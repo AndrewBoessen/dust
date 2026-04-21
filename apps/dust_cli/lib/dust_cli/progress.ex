@@ -7,14 +7,14 @@ defmodule Dust.CLI.Progress do
 
   def start(config, label, type) do
     with {:ok, token} <- resolve_token(config) do
-      url = "ws://#{config.host}:#{config.port}/api/v1/ws/events?token=#{token}"
+      url = "ws://#{config.host}:#{config.port}/api/v1/ws/events"
 
       WebSockex.start_link(url, __MODULE__, %{
         label: label,
         event_type: @type_to_event[type],
         total: nil,
         current: 0
-      })
+      }, extra_headers: [{"Authorization", "Bearer #{token}"}])
     end
   end
 

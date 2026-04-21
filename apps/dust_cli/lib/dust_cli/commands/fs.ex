@@ -272,12 +272,13 @@ defmodule Dust.CLI.Commands.Fs do
   defp do_upload(config, local_path, dir_id, file_name) do
     label = "#{file_name}  #{format_file_size(local_path)}"
 
-    ws = case Progress.start(config, label, :upload) do
-      {:ok, pid} -> pid
-      _ ->
-        Owl.Spinner.start(id: :upload, labels: %{processing: "Uploading #{label}..."})
-        nil
-    end
+    ws =
+      case Progress.start(config, label, :upload) do
+        {:ok, pid} -> pid
+        _ ->
+          Formatter.info("Uploading #{label}...")
+          nil
+      end
 
     result =
       Task.async(fn ->
@@ -289,11 +290,7 @@ defmodule Dust.CLI.Commands.Fs do
       end)
       |> Task.await(:infinity)
 
-    if ws do
-      Progress.stop(ws)
-    else
-      Owl.Spinner.stop(id: :upload, resolution: :ok)
-    end
+    if ws, do: Progress.stop(ws)
 
     case result do
       {201, {:ok, %{"file_id" => file_id}}} ->
@@ -356,12 +353,13 @@ defmodule Dust.CLI.Commands.Fs do
   defp do_download(config, file_id, remote_path, dest_path) do
     label = "#{Path.basename(remote_path)} → #{dest_path}"
 
-    ws = case Progress.start(config, label, :download) do
-      {:ok, pid} -> pid
-      _ ->
-        Owl.Spinner.start(id: :download, labels: %{processing: "Downloading #{label}..."})
-        nil
-    end
+    ws =
+      case Progress.start(config, label, :download) do
+        {:ok, pid} -> pid
+        _ ->
+          Formatter.info("Downloading #{label}...")
+          nil
+      end
 
     result =
       Task.async(fn ->
@@ -372,11 +370,7 @@ defmodule Dust.CLI.Commands.Fs do
       end)
       |> Task.await(:infinity)
 
-    if ws do
-      Progress.stop(ws)
-    else
-      Owl.Spinner.stop(id: :download, resolution: :ok)
-    end
+    if ws, do: Progress.stop(ws)
 
     case result do
       {200, {:ok, %{"path" => path}}} ->
