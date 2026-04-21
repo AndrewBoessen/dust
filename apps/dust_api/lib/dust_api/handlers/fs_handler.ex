@@ -43,20 +43,25 @@ defmodule Dust.Api.Handlers.FsHandler do
   @spec mkdir(Plug.Conn.t()) :: Plug.Conn.t()
   def mkdir(conn) do
     case conn.body_params do
-      %{"parent_id" => parent_id, "name" => name} ->
+      %{"name" => name} = params ->
+        parent_id = Map.get(params, "parent_id")
+
         case FileSystem.mkdir(parent_id, name) do
           {:ok, dir_id} ->
             json_response(conn, 201, %{dir_id: dir_id})
+
+          {:error, :already_exists} ->
+            json_response(conn, 409, %{error: "directory_already_exists"})
+
+          {:error, :root_already_exists} ->
+            json_response(conn, 409, %{error: "root_already_exists"})
 
           {:error, reason} ->
             json_response(conn, 400, %{error: inspect(reason)})
         end
 
       _ ->
-        json_response(conn, 400, %{
-          error: "missing_fields",
-          message: "'parent_id' and 'name' are required"
-        })
+        json_response(conn, 400, %{error: "missing_fields", message: "'name' is required"})
     end
   end
 
