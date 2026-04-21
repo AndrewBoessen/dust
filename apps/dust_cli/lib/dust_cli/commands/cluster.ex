@@ -28,9 +28,7 @@ defmodule Dust.CLI.Commands.Cluster do
   end
 
   defp display_nodes(nodes) do
-    Formatter.heading("Cluster Nodes")
     IO.puts("")
-
     headers = ["Node", "Status", "Fitness", "Role"]
 
     rows =
@@ -60,11 +58,14 @@ defmodule Dust.CLI.Commands.Cluster do
         IO.puts("")
         Formatter.success("Invite token created")
         IO.puts("")
-        IO.puts("  To join this network from another machine, run:")
+        Formatter.info_box("Join Command", [
+          "To join this network from another machine:\n\n",
+          Owl.Data.tag("  dustctl join #{body["join_ip"]} #{body["token"]}", [:bright, :cyan]),
+          "\n\n",
+          Owl.Data.tag("! ", :yellow),
+          "One-time use · expires in 10 minutes"
+        ])
         IO.puts("")
-        Owl.IO.puts(["    ", Owl.Data.tag("dustctl join #{body["join_ip"]} #{body["token"]}", :bright)])
-        IO.puts("")
-        Formatter.warning("This token can only be used once and expires in 10 minutes.")
         0
 
       {_, {:ok, %{"error" => reason}}} ->

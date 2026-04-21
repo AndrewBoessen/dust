@@ -143,10 +143,10 @@ defmodule Dust.CLI do
   defp dispatch({:halt, :network_down}) do
     Formatter.error("Not connected to Tailscale")
     IO.puts("")
-    IO.puts("  This command requires an active Tailscale connection.")
-    IO.puts("  Run the following to authenticate:")
-    IO.puts("")
-    Owl.IO.puts(["    ", Owl.Data.tag("dustctl auth", :bright)])
+    Formatter.info_box("Tip", [
+      "This command requires an active Tailscale connection.\n\n",
+      Owl.Data.tag("  dustctl auth", :bright)
+    ])
     IO.puts("")
     1
   end
@@ -192,7 +192,106 @@ defmodule Dust.CLI do
   end
 
   defp print_help do
-    IO.puts(@moduledoc)
+    IO.puts("")
+
+    Owl.Box.new(
+      [
+        Owl.Data.tag("dustctl", [:bright, :cyan]),
+        Owl.Data.tag("  v#{@version}", :faint),
+        "\n",
+        Owl.Data.tag("Distributed file system CLI", :faint)
+      ],
+      border_style: :solid_rounded,
+      padding_x: 2,
+      padding_y: 1,
+      horizontal_align: :left
+    )
+    |> Owl.IO.puts()
+
+    IO.puts("")
+
+    groups = [
+      {"Setup", [
+        {"init", "First-time setup wizard"},
+        {"status", "Show node status"}
+      ]},
+      {"Network", [
+        {"auth", "Check Tailscale status, show auth URL if needed"},
+        {"auth status", "Detailed network connectivity info"},
+        {"auth logout", "Disconnect from Tailscale"}
+      ]},
+      {"Daemon", [
+        {"daemon start", "Start the daemon"},
+        {"daemon stop", "Stop the daemon"},
+        {"daemon status", "Check if daemon is running"},
+        {"daemon install", "Install as system service"},
+        {"daemon uninstall", "Remove system service"}
+      ]},
+      {"Key Store", [
+        {"unlock", "Unlock the key store"},
+        {"lock", "Lock the key store"}
+      ]},
+      {"File System", [
+        {"ls [PATH]", "List directory contents"},
+        {"mkdir PATH", "Create a directory"},
+        {"upload FILE [REMOTE]", "Upload a file"},
+        {"download PATH DEST", "Download a file to a local path"},
+        {"rm PATH", "Remove a file or directory"},
+        {"stat PATH", "Show metadata for a file"}
+      ]},
+      {"Cluster", [
+        {"nodes", "List cluster peers"},
+        {"invite", "Create an invite token"},
+        {"join IP TOKEN", "Join an existing cluster"}
+      ]},
+      {"Config", [
+        {"config", "Show current configuration"},
+        {"config set KEY VALUE", "Update a runtime configuration value"}
+      ]},
+      {"Garbage Collection", [
+        {"gc stats", "Show garbage collection statistics"},
+        {"gc sweep", "Trigger a manual GC sweep"}
+      ]}
+    ]
+
+    Enum.each(groups, fn {group_name, commands} ->
+      Owl.IO.puts(["  ", Owl.Data.tag(group_name, :bright)])
+      IO.puts("")
+
+      rows =
+        Enum.map(commands, fn {cmd, desc} ->
+          %{"Command" => Owl.Data.tag(cmd, :cyan), "Description" => desc}
+        end)
+
+      Owl.Table.new(rows,
+        border_style: :solid_rounded,
+        padding_x: 1,
+        sort_columns: fn col_a, _col_b -> col_a == "Command" end
+      )
+      |> Owl.IO.puts()
+
+      IO.puts("")
+    end)
+
+    Owl.IO.puts(["  ", Owl.Data.tag("Global Options", :bright)])
+    IO.puts("")
+
+    options_rows = [
+      %{"Option" => Owl.Data.tag("--host HOST", :cyan), "Description" => "Daemon host (default: 127.0.0.1)"},
+      %{"Option" => Owl.Data.tag("--port PORT", :cyan), "Description" => "Daemon port (default: 4884)"},
+      %{"Option" => Owl.Data.tag("--token TOKEN", :cyan), "Description" => "API bearer token (default: read from data dir)"},
+      %{"Option" => Owl.Data.tag("--data-dir DIR", :cyan), "Description" => "Data directory (default: ~/.dust)"},
+      %{"Option" => Owl.Data.tag("--no-color", :cyan), "Description" => "Disable colored output"}
+    ]
+
+    Owl.Table.new(options_rows,
+      border_style: :solid_rounded,
+      padding_x: 1,
+      sort_columns: fn col_a, _col_b -> col_a == "Option" end
+    )
+    |> Owl.IO.puts()
+
+    IO.puts("")
     0
   end
 

@@ -22,21 +22,18 @@ defmodule Dust.CLI.Commands.Gc do
   defp stats(config) do
     case Client.get(config, "/api/v1/gc/stats") do
       {200, {:ok, body}} ->
-        Formatter.heading("Garbage Collection Statistics")
-        IO.puts("")
-
         last_sweep =
           case body["last_sweep_at"] do
             nil -> "never"
             ts -> ts
           end
 
-        Formatter.kv([
+        IO.puts("")
+        Formatter.kv_box("GC Statistics", [
           {"Last sweep", last_sweep},
           {"Orphans removed", body["orphans_removed"] || 0},
           {"Replicas removed", body["replicas_removed"] || 0}
         ])
-
         IO.puts("")
         0
 

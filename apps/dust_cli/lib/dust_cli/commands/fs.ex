@@ -403,10 +403,8 @@ defmodule Dust.CLI.Commands.Fs do
              {:ok, file_id} <- resolve_file_path(config, path) do
           case Client.get(config, "/api/v1/fs/stat/#{file_id}") do
             {200, {:ok, %{"file" => file}}} ->
-              Formatter.heading("File Info")
               IO.puts("")
-
-              Formatter.kv([
+              Formatter.kv_box("File Info", [
                 {"Name", file["name"] || "—"},
                 {"ID", file["id"] || file_id},
                 {"MIME", file["mime"] || "—"},
@@ -414,7 +412,6 @@ defmodule Dust.CLI.Commands.Fs do
                 {"Checksum", file["checksum"] || "—"},
                 {"Created", file["created_at"] || "—"}
               ])
-
               IO.puts("")
               0
 

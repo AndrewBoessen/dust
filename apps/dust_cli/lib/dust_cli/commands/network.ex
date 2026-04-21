@@ -16,9 +16,6 @@ defmodule Dust.CLI.Commands.Network do
   # ── auth (default) ─────────────────────────────────────────────────────
 
   defp auth(config) do
-    Formatter.heading("Tailscale Authentication")
-    IO.puts("")
-
     case Client.get(config, "/api/v1/status") do
       {200, {:ok, %{"network" => %{"connected" => true} = net}}} ->
         Formatter.success("Already connected to Tailscale")
@@ -45,9 +42,10 @@ defmodule Dust.CLI.Commands.Network do
 
         if auth_url do
           IO.puts("")
-          IO.puts("  Visit this link to authenticate with Tailscale:")
-          IO.puts("")
-          Owl.IO.puts(["    ", Owl.Data.tag(auth_url, [:cyan, :underline])])
+          Formatter.info_box("Tailscale Auth", [
+            "Visit this link to authenticate:\n\n",
+            Owl.Data.tag("  " <> auth_url, [:cyan, :underline])
+          ])
           IO.puts("")
           Formatter.info("Waiting for authentication (press Ctrl+C to cancel)...")
           IO.puts("")
@@ -76,18 +74,18 @@ defmodule Dust.CLI.Commands.Network do
           end
         else
           IO.puts("")
-          IO.puts("  Could not retrieve a login URL from the daemon.")
-          IO.puts("  This can happen if the sidecar hasn't started yet.")
-          IO.puts("")
-          Owl.IO.puts(["  ", Owl.Data.tag("Option 1:", :bright), " Set TS_AUTHKEY and restart:"])
-          IO.puts("")
-          Owl.IO.puts(["    ", Owl.Data.tag("export TS_AUTHKEY=\"tskey-auth-...\"", :bright)])
-          Owl.IO.puts(["    ", Owl.Data.tag("dustctl daemon stop && dustctl daemon start", :bright)])
-          IO.puts("")
-          Owl.IO.puts(["  ", Owl.Data.tag("Option 2:", :bright), " Check the daemon logs for a login URL:"])
-          IO.puts("")
-          Owl.IO.puts(["    ", Owl.Data.tag("journalctl -u dust -f", :bright), "     (systemd)"])
-          Owl.IO.puts(["    ", Owl.Data.tag("log stream --predicate 'process == \"dust\"'", :bright), "  (macOS)"])
+          Formatter.info_box("Could not retrieve auth URL", [
+            "This can happen if the sidecar hasn't started yet.\n\n",
+            Owl.Data.tag("Option 1:", :bright), " Set TS_AUTHKEY and restart:\n\n",
+            Owl.Data.tag("  export TS_AUTHKEY=\"tskey-auth-...\"", :cyan), "\n",
+            Owl.Data.tag("  dustctl daemon stop && dustctl daemon start", :cyan),
+            "\n\n",
+            Owl.Data.tag("Option 2:", :bright), " Check daemon logs for a login URL:\n\n",
+            Owl.Data.tag("  journalctl -u dust -f", :cyan),
+            Owl.Data.tag("     (systemd)\n", :faint),
+            Owl.Data.tag("  log stream --predicate 'process == \"dust\"'", :cyan),
+            Owl.Data.tag("  (macOS)", :faint)
+          ])
           IO.puts("")
 
           show_auth_instructions()
@@ -109,9 +107,6 @@ defmodule Dust.CLI.Commands.Network do
   defp status(config) do
     case Client.get(config, "/api/v1/status") do
       {200, {:ok, %{"network" => net, "ready" => ready}}} ->
-        Formatter.heading("Network Status")
-        IO.puts("")
-
         connected = net["connected"] == true
         state = net["state"] || "unknown"
         auth_url = net["auth_url"]
@@ -138,7 +133,8 @@ defmodule Dust.CLI.Commands.Network do
             pairs
           end
 
-        Formatter.kv(pairs)
+        IO.puts("")
+        Formatter.kv_box("Network Status", pairs)
 
         unless connected do
           IO.puts("")
@@ -185,7 +181,7 @@ defmodule Dust.CLI.Commands.Network do
   # ── Helpers ────────────────────────────────────────────────────────────
 
   defp display_network(net) do
-    Formatter.kv([
+    Formatter.kv_box("Network", [
       {"Status", "connected"},
       {"Self IP", net["self_ip"] || "—"},
       {"Tailscale Peers", net["tailscale_peers"] || 0}
@@ -224,15 +220,14 @@ defmodule Dust.CLI.Commands.Network do
   end
 
   defp show_auth_instructions do
-    Owl.IO.puts(["  ", Owl.Data.tag("How to get a TS_AUTHKEY:", :bright)])
-    IO.puts("")
-    IO.puts("  1. Go to https://login.tailscale.com/admin/settings/keys")
-    IO.puts("  2. Generate a new auth key")
-    IO.puts("  3. Enable Tags → select 'tag:dust-node'")
-    IO.puts("  4. Enable Pre-approved (if device approval is on)")
-    IO.puts("  5. Copy the key and set it:")
-    IO.puts("")
-    Owl.IO.puts(["     ", Owl.Data.tag("export TS_AUTHKEY=\"tskey-auth-...\"", :bright)])
+    Formatter.info_box("How to get a TS_AUTHKEY", [
+      "1. Go to https://login.tailscale.com/admin/settings/keys\n",
+      "2. Generate a new auth key\n",
+      "3. Enable Tags → select 'tag:dust-node'\n",
+      "4. Enable Pre-approved (if device approval is on)\n",
+      "5. Copy the key and set it:\n\n",
+      Owl.Data.tag("   export TS_AUTHKEY=\"tskey-auth-...\"", :cyan)
+    ])
     IO.puts("")
   end
 end

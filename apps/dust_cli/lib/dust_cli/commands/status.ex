@@ -33,10 +33,7 @@ defmodule Dust.CLI.Commands.Status do
     network = status["network"] || %{}
     net_status = if network["connected"], do: "connected", else: "disconnected"
 
-    Formatter.heading("Node Status")
-    IO.puts("")
-
-    Formatter.kv([
+    Formatter.kv_box("Node Status", [
       {"Node", status["node"]},
       {"Version", status["version"] || "0.1.0"},
       {"Status", ready},
@@ -65,9 +62,7 @@ defmodule Dust.CLI.Commands.Status do
 
     if disk do
       IO.puts("")
-      Formatter.dim("Disk:")
-
-      Formatter.kv([
+      Formatter.kv_box("Disk", [
         {"Quota", format_bytes(disk["quota_bytes"])},
         {"Available", format_bytes(disk["available_bytes"])},
         {"Total", format_bytes(disk["total_bytes"])}

@@ -16,8 +16,38 @@ defmodule Dust.CLI.Formatter do
 
   def heading(title) do
     IO.puts("")
-    Owl.IO.puts(Owl.Data.tag(title, :bright))
-    Owl.IO.puts(Owl.Data.tag(String.duplicate("─", String.length(title)), :faint))
+    Owl.Box.new(Owl.Data.tag(title, :bright),
+      border_style: :solid_rounded,
+      padding_x: 1,
+      horizontal_align: :left
+    )
+    |> Owl.IO.puts()
+  end
+
+  # ── Key-value box ──────────────────────────────────────────────────────
+
+  def kv_box(title, pairs) do
+    max_key_len =
+      pairs
+      |> Enum.map(fn {k, _} -> String.length(to_string(k)) end)
+      |> Enum.max(fn -> 0 end)
+
+    content =
+      pairs
+      |> Enum.map(fn {k, v} ->
+        padded = String.pad_trailing(to_string(k), max_key_len)
+        [Owl.Data.tag(padded, :cyan), "  ", to_string(v)]
+      end)
+      |> Enum.intersperse(["\n"])
+      |> List.flatten()
+
+    Owl.Box.new(content,
+      title: Owl.Data.tag(" #{title} ", :bright),
+      border_style: :solid_rounded,
+      padding_x: 1,
+      horizontal_align: :left
+    )
+    |> Owl.IO.puts()
   end
 
   # ── Key-value display ──────────────────────────────────────────────────
@@ -34,6 +64,18 @@ defmodule Dust.CLI.Formatter do
     end)
   end
 
+  # ── Info box ───────────────────────────────────────────────────────────
+
+  def info_box(title, content) do
+    Owl.Box.new(content,
+      title: Owl.Data.tag(" #{title} ", :bright),
+      border_style: :solid_rounded,
+      padding_x: 1,
+      horizontal_align: :left
+    )
+    |> Owl.IO.puts()
+  end
+
   # ── Tables ─────────────────────────────────────────────────────────────
 
   def table(headers, rows) do
@@ -47,12 +89,11 @@ defmodule Dust.CLI.Formatter do
       end)
 
     Owl.Table.new(map_rows,
-      border_style: :none,
+      border_style: :solid_rounded,
       padding_x: 1,
-      sort_columns: fn cols ->
-        Enum.sort_by(cols, fn col ->
-          Enum.find_index(str_headers, &(&1 == col)) || 999
-        end)
+      sort_columns: fn col_a, col_b ->
+        (Enum.find_index(str_headers, &(&1 == col_a)) || 999) <=
+          (Enum.find_index(str_headers, &(&1 == col_b)) || 999)
       end
     )
     |> Owl.IO.puts()
@@ -63,13 +104,12 @@ defmodule Dust.CLI.Formatter do
   def daemon_unreachable do
     error("Cannot connect to the Dust daemon")
     IO.puts("")
-    IO.puts("  The daemon may not be running. Try:")
-    IO.puts("")
-    Owl.IO.puts(["    ", Owl.Data.tag("dustctl daemon start", :bright)])
-    IO.puts("")
-    IO.puts("  Or if this is your first time:")
-    IO.puts("")
-    Owl.IO.puts(["    ", Owl.Data.tag("dustctl init", :bright)])
+    info_box("Tip", [
+      "The daemon may not be running. Try:\n\n",
+      Owl.Data.tag("  dustctl daemon start", :bright),
+      "\n\nOr for first-time setup:\n\n",
+      Owl.Data.tag("  dustctl init", :bright)
+    ])
     IO.puts("")
   end
 end
