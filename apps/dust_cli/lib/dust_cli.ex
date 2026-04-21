@@ -33,6 +33,7 @@ defmodule Dust.CLI do
       upload FILE           Upload a file
       download ID DEST      Download a file to a local path
       rm ID                 Remove a file or directory
+      stat PATH             Show metadata for a file
 
       nodes                 List cluster peers
       invite                Create an invite token
@@ -166,6 +167,7 @@ defmodule Dust.CLI do
   defp dispatch({config, ["upload" | args]}), do: Commands.Fs.upload(config, args)
   defp dispatch({config, ["download" | args]}), do: Commands.Fs.download(config, args)
   defp dispatch({config, ["rm" | args]}), do: Commands.Fs.rm(config, args)
+  defp dispatch({config, ["stat" | args]}), do: Commands.Fs.stat(config, args)
 
   defp dispatch({config, ["nodes" | args]}), do: Commands.Cluster.nodes(config, args)
   defp dispatch({config, ["invite" | args]}), do: Commands.Cluster.invite(config, args)

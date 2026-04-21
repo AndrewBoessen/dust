@@ -7,6 +7,7 @@ defmodule Dust.CLI.Commands.Fs do
       dustctl upload LOCAL_FILE [REMOTE_PATH]
       dustctl download REMOTE_PATH DEST
       dustctl rm PATH
+      dustctl stat PATH
   """
 
   alias Dust.CLI.{Client, Formatter}
@@ -354,6 +355,72 @@ defmodule Dust.CLI.Commands.Fs do
     end
   end
 
+  # ── stat ───────────────────────────────────────────────────────────────
+
+  def stat(config, args) do
+    require_unlocked!(config)
+    {_opts, rest, _} = OptionParser.parse(args, strict: [])
+
+    case rest do
+      [path | _] ->
+        with :ok <- validate_path(path),
+             {:ok, file_id} <- resolve_file_path(config, path) do
+          case Client.get(config, "/api/v1/fs/stat/#{file_id}") do
+            {200, {:ok, %{"file" => file}}} ->
+              Formatter.heading("File Info")
+              IO.puts("")
+
+              Formatter.kv([
+                {"Name", file["name"] || "—"},
+                {"ID", file["id"] || file_id},
+                {"MIME", file["mime"] || "—"},
+                {"Size", format_size(file["size"])},
+                {"Checksum", file["checksum"] || "—"},
+                {"Created", file["created_at"] || "—"}
+              ])
+
+              IO.puts("")
+              0
+
+            {404, _} ->
+              Formatter.error("File not found: #{path}")
+              1
+
+            {:error, {:failed_connect, _}} ->
+              Formatter.daemon_unreachable()
+              1
+
+            other ->
+              Formatter.error("Unexpected response: #{inspect(other)}")
+              1
+          end
+        else
+          {:error, :no_root} ->
+            Formatter.error("No root directory found.")
+            Formatter.info("Run: dustctl init")
+            1
+
+          {:error, {:not_found, segment}} ->
+            Formatter.error("Path not found: #{path} (no entry named '#{segment}')")
+            1
+
+          {:error, {:invalid_path, reason}} ->
+            Formatter.error("Invalid path: #{reason}")
+            1
+
+          {:error, _} ->
+            Formatter.error("Failed to resolve path: #{path}")
+            1
+        end
+
+      [] ->
+        Formatter.error("Missing path")
+        IO.puts("  Usage: dustctl stat PATH")
+        IO.puts("  Example: dustctl stat /photos/img.jpg")
+        1
+    end
+  end
+
   # ── rm ─────────────────────────────────────────────────────────────────
 
   def rm(config, args) do
@@ -533,6 +600,19 @@ defmodule Dust.CLI.Commands.Fs do
     case Client.get(config, "/api/v1/config") do
       {200, {:ok, %{"config" => %{"root_dir_id" => id}}}} when is_binary(id) and id != "" -> id
       _ -> nil
+    end
+  end
+
+  defp format_size(nil), do: "—"
+  defp format_size(""), do: "—"
+
+  defp format_size(size_str) do
+    case Integer.parse(size_str) do
+      {bytes, _} when bytes >= 1_000_000_000 -> "#{Float.round(bytes / 1_000_000_000, 1)} GB"
+      {bytes, _} when bytes >= 1_000_000 -> "#{Float.round(bytes / 1_000_000, 1)} MB"
+      {bytes, _} when bytes >= 1_000 -> "#{Float.round(bytes / 1_000, 1)} KB"
+      {bytes, _} -> "#{bytes} B"
+      :error -> size_str
     end
   end
 

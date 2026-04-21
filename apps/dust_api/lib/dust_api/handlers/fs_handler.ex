@@ -2,11 +2,12 @@ defmodule Dust.Api.Handlers.FsHandler do
   @moduledoc """
   Handles file system operations:
 
-    - `GET    /api/v1/fs/ls/:dir_id`  — list directory contents
-    - `POST   /api/v1/fs/mkdir`       — create a directory
-    - `POST   /api/v1/fs/upload`      — upload a file (multipart or JSON)
-    - `POST   /api/v1/fs/download`    — download a file to a local path
-    - `DELETE /api/v1/fs/rm/:id`      — delete a file or directory
+    - `GET    /api/v1/fs/ls/:dir_id`    — list directory contents
+    - `GET    /api/v1/fs/stat/:file_id` — get file metadata
+    - `POST   /api/v1/fs/mkdir`         — create a directory
+    - `POST   /api/v1/fs/upload`        — upload a file (multipart or JSON)
+    - `POST   /api/v1/fs/download`      — download a file to a local path
+    - `DELETE /api/v1/fs/rm/:id`        — delete a file or directory
   """
 
   import Plug.Conn
@@ -36,6 +37,23 @@ defmodule Dust.Api.Handlers.FsHandler do
 
       {:error, reason} ->
         json_response(conn, 500, %{error: inspect(reason)})
+    end
+  end
+
+  @doc "Return metadata for a single file."
+  @spec stat(Plug.Conn.t(), String.t()) :: Plug.Conn.t()
+  def stat(conn, file_id) do
+    case FileSystem.stat(file_id) do
+      nil ->
+        json_response(conn, 404, %{error: "file_not_found"})
+
+      meta ->
+        file =
+          meta
+          |> Map.take([:id, :name, :dir_id, :mime, :size, :checksum, :created_at])
+          |> Enum.into(%{}, fn {k, v} -> {Atom.to_string(k), to_string(v)} end)
+
+        json_response(conn, 200, %{file: file})
     end
   end
 
