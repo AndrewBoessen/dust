@@ -32,6 +32,7 @@ defmodule Dust.CLI do
       mkdir NAME            Create a directory
       upload FILE           Upload a file
       download ID DEST      Download a file to a local path
+      mv SOURCE DEST        Move or rename a file or directory
       rm ID                 Remove a file or directory
       stat PATH             Show metadata for a file
 
@@ -166,6 +167,7 @@ defmodule Dust.CLI do
   defp dispatch({config, ["mkdir" | args]}), do: Commands.Fs.mkdir(config, args)
   defp dispatch({config, ["upload" | args]}), do: Commands.Fs.upload(config, args)
   defp dispatch({config, ["download" | args]}), do: Commands.Fs.download(config, args)
+  defp dispatch({config, ["mv" | args]}), do: Commands.Fs.mv(config, args)
   defp dispatch({config, ["rm" | args]}), do: Commands.Fs.rm(config, args)
   defp dispatch({config, ["stat" | args]}), do: Commands.Fs.stat(config, args)
 
@@ -236,6 +238,7 @@ defmodule Dust.CLI do
         {"mkdir PATH", "Create a directory"},
         {"upload FILE [REMOTE]", "Upload a file"},
         {"download PATH DEST", "Download a file to a local path"},
+        {"mv SOURCE DEST", "Move or rename a file or directory"},
         {"rm PATH", "Remove a file or directory"},
         {"stat PATH", "Show metadata for a file"}
       ]},

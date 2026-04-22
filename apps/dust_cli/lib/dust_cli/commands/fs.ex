@@ -464,6 +464,130 @@ defmodule Dust.CLI.Commands.Fs do
     end
   end
 
+  # ── mv ─────────────────────────────────────────────────────────────────
+
+  def mv(config, args) do
+    require_unlocked!(config)
+    {_opts, rest, _} = OptionParser.parse(args, strict: [])
+
+    case rest do
+      [src_path, dest_path | _] ->
+        with :ok <- validate_path(src_path),
+             :ok <- validate_path(dest_path),
+             {:ok, {src_type, src_id, src_name}} <- resolve_any_path_with_info(config, src_path),
+             {:ok, dest_dir_id, new_name} <- resolve_move_dest(config, dest_path, src_name) do
+          case Client.post(config, "/api/v1/fs/mv", %{
+                 id: src_id,
+                 type: to_string(src_type),
+                 dest_dir_id: dest_dir_id,
+                 new_name: new_name
+               }) do
+            {200, {:ok, %{"status" => "moved"}}} ->
+              Formatter.success("#{src_path} → #{dest_path}")
+              0
+
+            {400, {:ok, %{"error" => "cannot_move_root"}}} ->
+              Formatter.error("Cannot move the root directory")
+              1
+
+            {400, {:ok, %{"error" => "cycle_detected"}}} ->
+              Formatter.error("Cannot move a directory into itself or one of its descendants")
+              1
+
+            {400, {:ok, %{"error" => "invalid_name"}}} ->
+              Formatter.error("Invalid destination name")
+              1
+
+            {404, {:ok, %{"error" => "source_not_found"}}} ->
+              Formatter.error("Source not found: #{src_path}")
+              1
+
+            {404, {:ok, %{"error" => "destination_not_found"}}} ->
+              Formatter.error("Destination directory not found")
+              1
+
+            {409, {:ok, %{"error" => "name_conflict"}}} ->
+              Formatter.error("A file or directory named '#{new_name}' already exists at the destination")
+              1
+
+            {503, _} ->
+              Formatter.error("Storage unavailable; try again later")
+              1
+
+            {:error, {:failed_connect, _}} ->
+              Formatter.daemon_unreachable()
+              1
+
+            other ->
+              Formatter.error("Unexpected response: #{inspect(other)}")
+              1
+          end
+        else
+          {:error, :no_root} ->
+            Formatter.error("No root directory found.")
+            Formatter.info("Run: dustctl init")
+            1
+
+          {:error, {:not_found, segment}} ->
+            Formatter.error("Path not found: '#{segment}'")
+            1
+
+          {:error, {:invalid_path, reason}} ->
+            Formatter.error("Invalid path: #{reason}")
+            1
+
+          {:error, _} ->
+            Formatter.error("Failed to resolve paths")
+            1
+        end
+
+      _ ->
+        Formatter.error("Missing arguments")
+        IO.puts("  Usage: dustctl mv SOURCE DEST")
+        IO.puts("  Examples:")
+        IO.puts("    dustctl mv /photos/img.jpg /archive/")
+        IO.puts("    dustctl mv /photos/img.jpg /archive/renamed.jpg")
+        IO.puts("    dustctl mv /old-folder /new-folder")
+        1
+    end
+  end
+
+  # Resolves destination for a move: if DEST is an existing directory, move into
+  # it keeping src_name; otherwise treat parent(DEST) as the directory and
+  # basename(DEST) as the new name.
+  defp resolve_move_dest(config, dest_path, src_name) do
+    target =
+      if String.ends_with?(dest_path, "/") do
+        trimmed = String.trim_trailing(dest_path, "/")
+        if trimmed == "", do: "/", else: trimmed
+      else
+        dest_path
+      end
+
+    explicit_dir = String.ends_with?(dest_path, "/")
+
+    case resolve_dir_path(config, target) do
+      {:ok, dir_id} ->
+        {:ok, dir_id, src_name}
+
+      {:error, _} when not explicit_dir ->
+        parent_path = Path.dirname(dest_path)
+        new_name = Path.basename(dest_path)
+
+        if new_name == "" or new_name == "." do
+          {:error, {:invalid_path, "invalid destination name"}}
+        else
+          case resolve_dir_path(config, parent_path) do
+            {:ok, parent_dir_id} -> {:ok, parent_dir_id, new_name}
+            err -> err
+          end
+        end
+
+      err ->
+        err
+    end
+  end
+
   # ── rm ─────────────────────────────────────────────────────────────────
 
   def rm(config, args) do
@@ -583,6 +707,40 @@ defmodule Dust.CLI.Commands.Fs do
           case Enum.find(files, fn f -> f["name"] == filename end) do
             nil -> {:error, {:not_found, filename}}
             file -> {:ok, file["id"]}
+          end
+
+        _ ->
+          {:error, :api_error}
+      end
+    end
+  end
+
+  defp resolve_any_path_with_info(config, "/") do
+    case get_root_dir_id(config) do
+      {:ok, id} -> {:ok, {:dir, id, "/"}}
+      err -> err
+    end
+  end
+
+  defp resolve_any_path_with_info(config, path) do
+    dir_path = Path.dirname(path)
+    name = Path.basename(path)
+
+    with {:ok, parent_id} <- resolve_dir_path(config, dir_path) do
+      case Client.get(config, "/api/v1/fs/ls/#{parent_id}") do
+        {200, {:ok, body}} ->
+          dirs = Map.get(body, "dirs", [])
+          files = Map.get(body, "files", [])
+
+          cond do
+            dir = Enum.find(dirs, fn d -> d["name"] == name end) ->
+              {:ok, {:dir, dir["id"], name}}
+
+            file = Enum.find(files, fn f -> f["name"] == name end) ->
+              {:ok, {:file, file["id"], name}}
+
+            true ->
+              {:error, {:not_found, name}}
           end
 
         _ ->

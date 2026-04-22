@@ -306,6 +306,104 @@ defmodule Dust.Mesh.FileSystem do
     end
   end
 
+  @doc """
+  Moves a file to `dest_dir_id` and renames it to `new_name`.
+
+  Returns `:ok` or one of:
+    - `{:error, :not_found}` — file does not exist
+    - `{:error, :dest_not_found}` — destination directory does not exist
+    - `{:error, :name_conflict}` — a different file with `new_name` already exists in `dest_dir_id`
+    - `{:error, :crdt_unavailable}`
+  """
+  @spec move_file(uuid(), uuid(), String.t()) ::
+          :ok
+          | {:error, :not_found | :dest_not_found | :name_conflict | :crdt_unavailable}
+  def move_file(file_id, dest_dir_id, new_name)
+      when is_binary(file_id) and is_binary(dest_dir_id) and is_binary(new_name) do
+    with %{} = file <- FileMap.get(file_id),
+         %{} <- DirMap.get(dest_dir_id) || :dest_missing do
+      conflict =
+        FileMap.all()
+        |> Enum.any?(fn {id, f} ->
+          id != file_id and f.dir_id == dest_dir_id and f.name == new_name
+        end)
+
+      if conflict do
+        {:error, :name_conflict}
+      else
+        _ = file
+        update_file(file_id, %{dir_id: dest_dir_id, name: new_name})
+      end
+    else
+      nil -> {:error, :not_found}
+      :dest_missing -> {:error, :dest_not_found}
+    end
+  end
+
+  @doc """
+  Moves a directory to `dest_parent_id` and renames it to `new_name`.
+
+  Returns `:ok` or one of:
+    - `{:error, :not_found}` — source directory does not exist
+    - `{:error, :dest_not_found}` — destination parent directory does not exist
+    - `{:error, :cannot_move_root}` — source is the root directory (no parent)
+    - `{:error, :cycle}` — destination is the directory itself or a descendant of it
+    - `{:error, :name_conflict}` — a directory with `new_name` already exists under `dest_parent_id`
+    - `{:error, :crdt_unavailable}`
+  """
+  @spec move_dir(uuid(), uuid(), String.t()) ::
+          :ok
+          | {:error,
+             :not_found
+             | :dest_not_found
+             | :cannot_move_root
+             | :cycle
+             | :name_conflict
+             | :crdt_unavailable}
+  def move_dir(dir_id, dest_parent_id, new_name)
+      when is_binary(dir_id) and is_binary(dest_parent_id) and is_binary(new_name) do
+    with %{} = entry <- DirMap.get(dir_id),
+         :not_root <- (if entry.parent_id == nil, do: :is_root, else: :not_root),
+         %{} <- DirMap.get(dest_parent_id) || :dest_missing,
+         :no_cycle <- (if would_create_cycle?(dir_id, dest_parent_id), do: :cycle, else: :no_cycle) do
+      conflict =
+        DirMap.all()
+        |> Enum.any?(fn {id, d} ->
+          id != dir_id and d.parent_id == dest_parent_id and d.name == new_name
+        end)
+
+      if conflict do
+        {:error, :name_conflict}
+      else
+        case DirMap.put(dir_id, %{entry | parent_id: dest_parent_id, name: new_name}) do
+          :ok -> :ok
+          {:error, :crdt_unavailable} -> {:error, :crdt_unavailable}
+        end
+      end
+    else
+      nil -> {:error, :not_found}
+      :is_root -> {:error, :cannot_move_root}
+      :dest_missing -> {:error, :dest_not_found}
+      :cycle -> {:error, :cycle}
+    end
+  end
+
+  # Returns true if moving dir_id under dest_parent_id would create a cycle,
+  # i.e. dest_parent_id is dir_id itself or a descendant of dir_id.
+  defp would_create_cycle?(dir_id, dest_parent_id) do
+    dir_id == dest_parent_id or descendant_of?(dest_parent_id, dir_id)
+  end
+
+  # Returns true if candidate_id is a descendant of ancestor_id.
+  defp descendant_of?(candidate_id, ancestor_id) do
+    case DirMap.get(candidate_id) do
+      nil -> false
+      %{parent_id: nil} -> false
+      %{parent_id: ^ancestor_id} -> true
+      %{parent_id: parent} -> descendant_of?(parent, ancestor_id)
+    end
+  end
+
   @doc "Deletes a file entirely. (Accepts dir_id for legacy API compliance)."
   @spec rm_file(uuid(), uuid() | nil) :: :ok | {:error, :not_found | :crdt_unavailable}
   def rm_file(file_id, _dir_id \\ nil) when is_binary(file_id) do

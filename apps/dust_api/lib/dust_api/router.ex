@@ -58,6 +58,10 @@ defmodule Dust.Api.Router do
     Dust.Api.Handlers.FsHandler.download(conn)
   end
 
+  post "/api/v1/fs/mv" do
+    Dust.Api.Handlers.FsHandler.move(conn)
+  end
+
   delete "/api/v1/fs/rm/:id" do
     Dust.Api.Handlers.FsHandler.remove(conn, id)
   end
