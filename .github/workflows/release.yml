@@ -83,6 +83,7 @@ jobs:
         with:
           name: dust-server-linux-x86_64
           path: dust-server-linux-x86_64.tar.gz
+          overwrite: true
 
   # ── Server Release: Linux aarch64 ────────────────────────────────────
   build-server-linux-aarch64:
@@ -147,6 +148,7 @@ jobs:
         with:
           name: dust-server-linux-aarch64
           path: dust-server-linux-aarch64.tar.gz
+          overwrite: true
 
   # ── Server Release: macOS x86_64 ─────────────────────────────────────
   build-server-macos-x86_64:
@@ -209,6 +211,7 @@ jobs:
         with:
           name: dust-server-macos-x86_64
           path: dust-server-macos-x86_64.tar.gz
+          overwrite: true
 
   # ── Server Release: macOS aarch64 ────────────────────────────────────
   build-server-macos-aarch64:
@@ -271,6 +274,7 @@ jobs:
         with:
           name: dust-server-macos-aarch64
           path: dust-server-macos-aarch64.tar.gz
+          overwrite: true
 
   # ── Server Release: Windows x86_64 ───────────────────────────────────
   build-server-windows-x86_64:
@@ -343,6 +347,7 @@ jobs:
         with:
           name: dust-server-windows-x86_64
           path: dust-server-windows-x86_64.zip
+          overwrite: true
 
   # ── CLI Binaries: Matrix across all platforms ─────────────────────────
   #
@@ -436,6 +441,7 @@ jobs:
         with:
           name: dustctl-${{ matrix.target }}
           path: apps/dust_cli/burrito_out/dustctl_${{ matrix.target }}${{ matrix.artifact_ext }}
+          overwrite: true
 
   # ── Create GitHub Release ─────────────────────────────────────────────
   release:
