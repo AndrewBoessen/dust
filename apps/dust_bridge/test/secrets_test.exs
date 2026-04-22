@@ -1,17 +1,15 @@
 defmodule Dust.Bridge.SecretsTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case
 
   alias Dust.Bridge.Secrets
 
   @moduletag :tmp_dir
 
-  setup_all do
+  setup %{tmp_dir: tmp_dir} do
+    # Stop the application so any supervisor-owned Secrets process is gone
+    # before we start a fresh supervised one for this test.
     Application.stop(:dust_bridge)
 
-    on_exit(fn -> Application.ensure_all_started(:dust_bridge) end)
-  end
-
-  setup %{tmp_dir: tmp_dir} do
     old_env = Application.get_env(:dust_utilities, :config, %{})
     # Point file paths at the test tmp dir
     Application.put_env(:dust_utilities, :config, %{persist_dir: tmp_dir})
@@ -25,6 +23,8 @@ defmodule Dust.Bridge.SecretsTest do
       else
         Application.delete_env(:dust_utilities, :config)
       end
+
+      Application.ensure_all_started(:dust_bridge)
     end)
 
     {:ok, agent: pid, tmp_dir: tmp_dir}
