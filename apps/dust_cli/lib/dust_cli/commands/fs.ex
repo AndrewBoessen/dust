@@ -66,30 +66,40 @@ defmodule Dust.CLI.Commands.Fs do
     if dirs == [] and files == [] do
       Formatter.dim("(empty directory)")
     else
-      if long do
-        headers = ["Type", "Name", "ID", "Size"]
+      {headers, dir_rows, file_rows} =
+        if long do
+          hdrs = ["", "Name", "Size", "MIME", "Created", "ID"]
 
-        dir_rows =
-          Enum.map(dirs, fn d ->
-            ["dir", d["name"] || "?", d["id"] || "?", "—"]
-          end)
+          d_rows =
+            Enum.map(dirs, fn d ->
+              ["d", (d["name"] || "?") <> "/", "—", "—", format_datetime(d["created_at"]), d["id"] || "?"]
+            end)
 
-        file_rows =
-          Enum.map(files, fn f ->
-            ["file", f["name"] || "?", f["id"] || "?", f["size"] || "—"]
-          end)
+          f_rows =
+            Enum.map(files, fn f ->
+              ["-", f["name"] || "?", format_size(f["size"]), f["mime"] || "—",
+               format_datetime(f["created_at"]), f["id"] || "?"]
+            end)
 
-        IO.puts("")
-        Formatter.table(headers, dir_rows ++ file_rows)
-      else
-        Enum.each(dirs, fn d ->
-          IO.puts("  #{d["name"] || d["id"]}/")
-        end)
+          {hdrs, d_rows, f_rows}
+        else
+          hdrs = ["", "Name", "Size", "Created"]
 
-        Enum.each(files, fn f ->
-          IO.puts("  #{f["name"] || f["id"]}")
-        end)
-      end
+          d_rows =
+            Enum.map(dirs, fn d ->
+              ["d", (d["name"] || "?") <> "/", "—", format_datetime(d["created_at"])]
+            end)
+
+          f_rows =
+            Enum.map(files, fn f ->
+              ["-", f["name"] || "?", format_size(f["size"]), format_datetime(f["created_at"])]
+            end)
+
+          {hdrs, d_rows, f_rows}
+        end
+
+      IO.puts("")
+      Formatter.table(headers, dir_rows ++ file_rows)
     end
 
     IO.puts("")
@@ -633,6 +643,29 @@ defmodule Dust.CLI.Commands.Fs do
     case Client.get(config, "/api/v1/config") do
       {200, {:ok, %{"config" => %{"root_dir_id" => id}}}} when is_binary(id) and id != "" -> id
       _ -> nil
+    end
+  end
+
+  defp format_datetime(nil), do: "—"
+  defp format_datetime(""), do: "—"
+
+  defp format_datetime(dt_str) do
+    case NaiveDateTime.from_iso8601(dt_str) do
+      {:ok, dt} ->
+        :io_lib.format("~4..0B-~2..0B-~2..0B ~2..0B:~2..0B",
+          [dt.year, dt.month, dt.day, dt.hour, dt.minute])
+        |> IO.iodata_to_binary()
+
+      _ ->
+        case DateTime.from_iso8601(dt_str) do
+          {:ok, dt, _} ->
+            :io_lib.format("~4..0B-~2..0B-~2..0B ~2..0B:~2..0B",
+              [dt.year, dt.month, dt.day, dt.hour, dt.minute])
+            |> IO.iodata_to_binary()
+
+          _ ->
+            dt_str
+        end
     end
   end
 
