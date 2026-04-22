@@ -464,7 +464,6 @@ jobs:
           name: Dust ${{ steps.tag.outputs.tag }}
           draft: true
           generate_release_notes: true
-          allowUpdates: true
           overwrite_files: true
           files: |
             artifacts/dust-server-linux-x86_64.tar.gz
