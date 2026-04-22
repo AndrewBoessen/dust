@@ -251,8 +251,13 @@ defmodule Dust.Bridge do
 
   @spec sidecar_path() :: Path.t()
   defp sidecar_path do
-    default_path = Path.expand("../native/tsnet_sidecar/tsnet_sidecar", __DIR__)
+    binary_name =
+      case :os.type() do
+        {:win32, _} -> "tsnet_sidecar.exe"
+        _ -> "tsnet_sidecar"
+      end
 
+    default_path = Path.join(to_string(:code.priv_dir(:dust_bridge)), binary_name)
     Application.get_env(:dust_bridge, :sidecar_path, default_path)
   end
 end

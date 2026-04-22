@@ -62,6 +62,12 @@ jobs:
           CGO_ENABLED=0 go build -ldflags="-s -w" -o tsnet_sidecar
           chmod +x tsnet_sidecar
 
+      - name: Copy sidecar to priv
+        run: |
+          mkdir -p apps/dust_bridge/priv
+          cp apps/dust_bridge/native/tsnet_sidecar/tsnet_sidecar apps/dust_bridge/priv/tsnet_sidecar
+          chmod +x apps/dust_bridge/priv/tsnet_sidecar
+
       - name: Build server release
         run: mix release dust --overwrite
 
@@ -119,6 +125,12 @@ jobs:
           CGO_ENABLED=0 go build -ldflags="-s -w" -o tsnet_sidecar
           chmod +x tsnet_sidecar
 
+      - name: Copy sidecar to priv
+        run: |
+          mkdir -p apps/dust_bridge/priv
+          cp apps/dust_bridge/native/tsnet_sidecar/tsnet_sidecar apps/dust_bridge/priv/tsnet_sidecar
+          chmod +x apps/dust_bridge/priv/tsnet_sidecar
+
       - name: Build server release
         run: mix release dust --overwrite
 
@@ -174,6 +186,12 @@ jobs:
           CGO_ENABLED=0 go build -ldflags="-s -w" -o tsnet_sidecar
           chmod +x tsnet_sidecar
 
+      - name: Copy sidecar to priv
+        run: |
+          mkdir -p apps/dust_bridge/priv
+          cp apps/dust_bridge/native/tsnet_sidecar/tsnet_sidecar apps/dust_bridge/priv/tsnet_sidecar
+          chmod +x apps/dust_bridge/priv/tsnet_sidecar
+
       - name: Build server release
         run: mix release dust --overwrite
 
@@ -228,6 +246,12 @@ jobs:
           cd apps/dust_bridge/native/tsnet_sidecar
           CGO_ENABLED=0 go build -ldflags="-s -w" -o tsnet_sidecar
           chmod +x tsnet_sidecar
+
+      - name: Copy sidecar to priv
+        run: |
+          mkdir -p apps/dust_bridge/priv
+          cp apps/dust_bridge/native/tsnet_sidecar/tsnet_sidecar apps/dust_bridge/priv/tsnet_sidecar
+          chmod +x apps/dust_bridge/priv/tsnet_sidecar
 
       - name: Build server release
         run: mix release dust --overwrite
@@ -291,6 +315,12 @@ jobs:
           cd apps/dust_bridge/native/tsnet_sidecar
           $env:CGO_ENABLED="0"
           go build -ldflags="-s -w" -o tsnet_sidecar.exe
+        shell: pwsh
+
+      - name: Copy sidecar to priv
+        run: |
+          New-Item -ItemType Directory -Force -Path apps/dust_bridge/priv | Out-Null
+          Copy-Item apps/dust_bridge/native/tsnet_sidecar/tsnet_sidecar.exe apps/dust_bridge/priv/tsnet_sidecar.exe
         shell: pwsh
 
       - name: Build server release

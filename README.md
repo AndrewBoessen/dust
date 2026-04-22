@@ -26,11 +26,11 @@ Download the latest release for your platform from the [GitHub Releases](https:/
 
 | Platform | Artifact |
 |----------|----------|
-| Linux x86_64 | `dust-linux-x86_64.tar.gz` |
-| Linux aarch64 | `dust-linux-aarch64.tar.gz` |
-| macOS x86_64 (Intel) | `dust-macos-x86_64.tar.gz` |
-| macOS aarch64 (Apple Silicon) | `dust-macos-aarch64.tar.gz` |
-| Windows x86_64 | `dust-windows-x86_64.zip` |
+| Linux x86_64 | `dust-server-linux-x86_64.tar.gz` |
+| Linux aarch64 | `dust-server-linux-aarch64.tar.gz` |
+| macOS x86_64 (Intel) | `dust-server-macos-x86_64.tar.gz` |
+| macOS aarch64 (Apple Silicon) | `dust-server-macos-aarch64.tar.gz` |
+| Windows x86_64 | `dust-server-windows-x86_64.zip` |
 
 Verify the download against the `SHA256SUMS.txt` included with each release.
 
@@ -38,8 +38,8 @@ Verify the download against the `SHA256SUMS.txt` included with each release.
 
 ```bash
 # Download and extract
-curl -LO https://github.com/AndrewBoessen/dust/releases/latest/download/dust-linux-x86_64.tar.gz
-tar -xzf dust-linux-x86_64.tar.gz
+curl -LO https://github.com/AndrewBoessen/dust/releases/latest/download/dust-server-linux-x86_64.tar.gz
+tar -xzf dust-server-linux-x86_64.tar.gz
 
 # Move to a system path
 sudo mv dust/bin/dust /usr/local/bin/
@@ -52,7 +52,7 @@ To install as a systemd service for automatic startup:
 
 ```bash
 # Copy the service file
-sudo cp dust/lib/dust-0.1.0/priv/service/linux/dust.service /etc/systemd/system/
+sudo cp dust/service/linux/dust.service /etc/systemd/system/
 
 # Enable and start
 sudo systemctl daemon-reload
@@ -63,8 +63,8 @@ sudo systemctl enable --now dust
 
 ```bash
 # Download and extract
-curl -LO https://github.com/AndrewBoessen/dust/releases/latest/download/dust-macos-aarch64.tar.gz
-tar -xzf dust-macos-aarch64.tar.gz
+curl -LO https://github.com/AndrewBoessen/dust/releases/latest/download/dust-server-macos-aarch64.tar.gz
+tar -xzf dust-server-macos-aarch64.tar.gz
 
 # Move to a system path
 sudo mv dust/bin/dust /usr/local/bin/
@@ -76,13 +76,13 @@ dust start
 To install as a launchd service:
 
 ```bash
-cp dust/lib/dust-0.1.0/priv/service/macos/com.dust.daemon.plist ~/Library/LaunchAgents/
+cp dust/service/macos/com.dust.daemon.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/com.dust.daemon.plist
 ```
 
 #### Windows
 
-1. Download `dust-windows-x86_64.zip` from the releases page
+1. Download `dust-server-windows-x86_64.zip` from the releases page
 2. Extract the archive to `C:\Program Files\Dust\`
 3. Add `C:\Program Files\Dust\bin` to your system `PATH`
 4. Open a terminal and run:
@@ -91,10 +91,11 @@ launchctl load ~/Library/LaunchAgents/com.dust.daemon.plist
 dust start
 ```
 
-To install as a Windows service, download [WinSW](https://github.com/winsw/winsw) and place `winsw.exe` alongside `dust-service.xml` in the install directory:
+To install as a Windows service, download [WinSW](https://github.com/winsw/winsw) and place `winsw.exe` alongside `dust\service\windows\dust-service.xml` in your install directory:
 
 ```powershell
-# Rename winsw to match the service XML
+# Copy the service XML and rename winsw to match
+Copy-Item "C:\Program Files\Dust\service\windows\dust-service.xml" "C:\Program Files\Dust\"
 Rename-Item winsw.exe dust-service.exe
 dust-service.exe install
 dust-service.exe start
@@ -156,10 +157,12 @@ asdf install
 # Install Elixir dependencies
 mix deps.get
 
-# Build the Go sidecar
+# Build the Go sidecar and place it in the priv directory
 cd apps/dust_bridge/native/tsnet_sidecar
 go build -o tsnet_sidecar
 cd ../../../..
+mkdir -p apps/dust_bridge/priv
+cp apps/dust_bridge/native/tsnet_sidecar/tsnet_sidecar apps/dust_bridge/priv/tsnet_sidecar
 
 # Compile (development)
 mix compile
@@ -228,10 +231,12 @@ asdf install
 # Install Elixir dependencies
 mix deps.get
 
-# Build the Go sidecar
+# Build the Go sidecar and place it in the priv directory
 cd apps/dust_bridge/native/tsnet_sidecar
 go build -o tsnet_sidecar
 cd ../../../..
+mkdir -p apps/dust_bridge/priv
+cp apps/dust_bridge/native/tsnet_sidecar/tsnet_sidecar apps/dust_bridge/priv/tsnet_sidecar
 
 # Compile (development)
 mix compile
@@ -280,11 +285,13 @@ cd dust
 # Install Elixir dependencies
 mix deps.get
 
-# Build the Go sidecar
+# Build the Go sidecar and place it in the priv directory
 cd apps\dust_bridge\native\tsnet_sidecar
 $env:CGO_ENABLED = "0"
 go build -o tsnet_sidecar.exe
 cd ..\..\..\..
+New-Item -ItemType Directory -Force -Path apps\dust_bridge\priv | Out-Null
+Copy-Item apps\dust_bridge\native\tsnet_sidecar\tsnet_sidecar.exe apps\dust_bridge\priv\tsnet_sidecar.exe
 
 # Compile
 mix compile
