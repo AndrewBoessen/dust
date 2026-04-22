@@ -26,7 +26,9 @@ defmodule Dust.Cli.MixProject do
   defp deps do
     [
       {:jason, "~> 1.4"},
-      {:burrito, "~> 1.0"}
+      {:burrito, "~> 1.0"},
+      {:owl, "~> 0.12"},
+      {:websockex, "~> 0.4.3"}
     ]
   end
 

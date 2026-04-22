@@ -39,21 +39,27 @@ defmodule Dust.CLI.Commands.Init do
       :error ->
         Formatter.warning("Daemon is not running")
         IO.puts("")
-        IO.puts("  Start the daemon before continuing:")
-        IO.puts("    • From a release: #{bold("bin/dust start")}")
-        IO.puts("    • Development:    #{bold("iex -S mix")}")
+        Owl.IO.puts(["  Start the daemon before continuing:\n",
+                     "    • From a release: ", Owl.Data.tag("bin/dust start", :bright), "\n",
+                     "    • Development:    ", Owl.Data.tag("iex -S mix", :bright)])
         IO.puts("")
 
-        case prompt("Start the daemon now? (requires release binary) [y/N]") do
-          "y" ->
-            Dust.CLI.Commands.Daemon.run(config, ["start"])
+        if Owl.IO.confirm(message: "Start the daemon now? (requires release binary)", default: false) do
+          Dust.CLI.Commands.Daemon.run(config, ["start"])
 
-            IO.puts("  Waiting for daemon to become ready...")
-            wait_for_daemon(config, 30)
+          Owl.Spinner.start(id: :daemon_ready, labels: %{processing: "Waiting for daemon..."})
 
-          _ ->
-            Formatter.info("Skipping daemon start. Run 'dustctl init' again once the daemon is running.")
-            return_code(1)
+          case wait_for_daemon(config, 30) do
+            :ok ->
+              Owl.Spinner.stop(id: :daemon_ready, resolution: :ok, label: "Daemon is ready")
+
+            :timeout ->
+              Owl.Spinner.stop(id: :daemon_ready, resolution: :error, label: "Daemon did not become ready in time")
+              return_code(1)
+          end
+        else
+          Formatter.info("Skipping daemon start. Run 'dustctl init' again once the daemon is running.")
+          return_code(1)
         end
     end
 
@@ -68,7 +74,7 @@ defmodule Dust.CLI.Commands.Init do
 
       {200, {:ok, %{"key_store" => "locked"}}} ->
         IO.puts("")
-        password = get_secret("  Enter password (creates new key on first use): ")
+        password = Owl.IO.input(label: "Password (creates new key on first use)", secret: true)
 
         case Client.post(config, "/api/v1/unlock", %{password: password}) do
           {200, {:ok, %{"status" => status}}} ->
@@ -92,18 +98,18 @@ defmodule Dust.CLI.Commands.Init do
     # Step 4: Network setup
     Formatter.heading("Network Setup")
     IO.puts("")
-    IO.puts("  Choose how to configure networking:")
-    IO.puts("")
-    IO.puts("    #{bold("1")}  Create a new Dust network (first node)")
-    IO.puts("    #{bold("2")}  Join an existing Dust network")
-    IO.puts("    #{bold("3")}  Skip network setup (configure later)")
-    IO.puts("")
 
-    case prompt("  Select [1/2/3]") do
-      "1" ->
+    choice =
+      Owl.IO.select(
+        ["Create a new network (first node)", "Join an existing network", "Skip"],
+        label: "Network setup"
+      )
+
+    case choice do
+      "Create a new network (first node)" ->
         setup_new_network(config)
 
-      "2" ->
+      "Join an existing network" ->
         setup_join_network(config)
 
       _ ->
@@ -115,11 +121,11 @@ defmodule Dust.CLI.Commands.Init do
     IO.puts("")
     IO.puts("  Your Dust node is ready. Useful commands:")
     IO.puts("")
-    IO.puts("    #{bold("dustctl status")}          Check node status")
-    IO.puts("    #{bold("dustctl ls")}              List files")
-    IO.puts("    #{bold("dustctl upload FILE")}     Upload a file")
-    IO.puts("    #{bold("dustctl nodes")}           List cluster peers")
-    IO.puts("    #{bold("dustctl help")}            Full command reference")
+    Owl.IO.puts(["    ", Owl.Data.tag("dustctl status", :bright), "          Check node status"])
+    Owl.IO.puts(["    ", Owl.Data.tag("dustctl ls", :bright), "              List files"])
+    Owl.IO.puts(["    ", Owl.Data.tag("dustctl upload FILE", :bright), "     Upload a file"])
+    Owl.IO.puts(["    ", Owl.Data.tag("dustctl nodes", :bright), "           List cluster peers"])
+    Owl.IO.puts(["    ", Owl.Data.tag("dustctl help", :bright), "            Full command reference"])
     IO.puts("")
 
     0
@@ -139,13 +145,12 @@ defmodule Dust.CLI.Commands.Init do
     IO.puts("")
     IO.puts("  To add other nodes, run on this machine:")
     IO.puts("")
-    IO.puts("    #{bold("dustctl invite")}")
+    Owl.IO.puts(["    ", Owl.Data.tag("dustctl invite", :bright)])
     IO.puts("")
     IO.puts("  Then on the joining machine:")
     IO.puts("")
-    IO.puts("    #{bold("dustctl join <this-node-ip> <token>")}")
+    Owl.IO.puts(["    ", Owl.Data.tag("dustctl join <this-node-ip> <token>", :bright)])
 
-    # Create the root directory in the filesystem
     case Client.post(config, "/api/v1/fs/mkdir", %{parent_id: nil, name: "/"}) do
       {201, {:ok, %{"dir_id" => dir_id}}} ->
         Formatter.success("Created root directory: #{dir_id}")
@@ -164,27 +169,24 @@ defmodule Dust.CLI.Commands.Init do
 
   defp setup_join_network(config) do
     IO.puts("")
-    peer_ip = prompt("  Enter the Tailscale IP of the node to join")
-    token = prompt("  Enter the invite token")
+    peer_ip = Owl.IO.input(label: "Tailscale IP of the node to join")
+    token = Owl.IO.input(label: "Invite token")
 
     if peer_ip == "" or token == "" do
       Formatter.error("Both peer IP and token are required.")
     else
       IO.puts("")
-      Formatter.spinner("Joining network at #{peer_ip}")
+      Owl.Spinner.start(id: :join, labels: %{processing: "Joining network at #{peer_ip}..."})
 
       case Client.post(config, "/api/v1/join", %{peer_address: peer_ip, token: token}) do
         {200, {:ok, %{"status" => "joined"}}} ->
-          Formatter.spinner_done()
-          Formatter.success("Successfully joined the network via #{peer_ip}")
+          Owl.Spinner.stop(id: :join, resolution: :ok, label: "Joined network via #{peer_ip}")
 
         {_, {:ok, %{"error" => reason}}} ->
-          Formatter.spinner_done()
-          Formatter.error("Failed to join: #{reason}")
+          Owl.Spinner.stop(id: :join, resolution: :error, label: "Failed to join: #{reason}")
 
         {:error, reason} ->
-          Formatter.spinner_done()
-          Formatter.error("Connection error: #{inspect(reason)}")
+          Owl.Spinner.stop(id: :join, resolution: :error, label: "Connection error: #{inspect(reason)}")
       end
     end
   end
@@ -198,48 +200,16 @@ defmodule Dust.CLI.Commands.Init do
     end
   end
 
-  defp wait_for_daemon(_config, 0) do
-    Formatter.error("Daemon did not become ready in time.")
-  end
+  defp wait_for_daemon(_config, 0), do: :timeout
 
   defp wait_for_daemon(config, retries) do
     :timer.sleep(1_000)
 
     case Client.ping(config) do
-      :ok -> Formatter.success("Daemon is now running")
+      :ok -> :ok
       :error -> wait_for_daemon(config, retries - 1)
     end
   end
-
-  defp prompt(message) do
-    IO.write("#{message} ")
-    IO.read(:stdio, :line) |> String.trim()
-  end
-
-  def get_secret(prompt) do
-    pid = spawn_link(fn -> loop(prompt) end)
-    ref = make_ref()
-    value = IO.gets("#{prompt}: ")
-    send(pid, {:done, self(), ref})
-    receive do
-      {:done, ^pid, ^ref} -> :ok
-    end
-    value |> String.trim()
-  end
-
-  defp loop(prompt) do
-    receive do
-      {:done, parent, ref} ->
-        send(parent, {:done, self(), ref})
-        IO.write(:standard_error, "\e[2K\r")
-    after
-      1 ->
-        IO.write(:standard_error, "\e[2K\r#{prompt}: ")
-        loop(prompt)
-    end
-  end
-
-  defp bold(text), do: "\e[1m#{text}\e[0m"
 
   defp return_code(code) do
     System.halt(code)

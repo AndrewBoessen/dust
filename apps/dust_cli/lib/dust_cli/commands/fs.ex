@@ -10,7 +10,7 @@ defmodule Dust.CLI.Commands.Fs do
       dustctl stat PATH
   """
 
-  alias Dust.CLI.{Client, Formatter}
+  alias Dust.CLI.{Client, Formatter, Progress}
 
   # ── ls ─────────────────────────────────────────────────────────────────
 
@@ -64,36 +64,46 @@ defmodule Dust.CLI.Commands.Fs do
     files = body["files"] || []
 
     if dirs == [] and files == [] do
-      Formatter.dim("  (empty directory)")
+      Formatter.dim("(empty directory)")
     else
-      if long do
-        headers = ["Type", "Name", "ID", "Size"]
+      {headers, dir_rows, file_rows} =
+        if long do
+          hdrs = ["", "Name", "Size", "MIME", "Created", "ID"]
 
-        dir_rows =
-          Enum.map(dirs, fn d ->
-            ["📁 dir", d["name"] || "?", d["id"] || "?", "—"]
-          end)
+          d_rows =
+            Enum.map(dirs, fn d ->
+              ["d", (d["name"] || "?") <> "/", "—", "—", format_datetime(d["created_at"]), d["id"] || "?"]
+            end)
 
-        file_rows =
-          Enum.map(files, fn f ->
-            ["📄 file", f["name"] || "?", f["id"] || "?", f["size"] || "—"]
-          end)
+          f_rows =
+            Enum.map(files, fn f ->
+              ["-", f["name"] || "?", format_size(f["size"]), f["mime"] || "—",
+               format_datetime(f["created_at"]), f["id"] || "?"]
+            end)
 
-        IO.puts("")
-        Formatter.table(headers, dir_rows ++ file_rows)
-      else
-        Enum.each(dirs, fn d ->
-          IO.puts("  📁 #{d["name"] || d["id"]}/")
-        end)
+          {hdrs, d_rows, f_rows}
+        else
+          hdrs = ["", "Name", "Size", "Created"]
 
-        Enum.each(files, fn f ->
-          IO.puts("  📄 #{f["name"] || f["id"]}")
-        end)
-      end
+          d_rows =
+            Enum.map(dirs, fn d ->
+              ["d", (d["name"] || "?") <> "/", "—", format_datetime(d["created_at"])]
+            end)
+
+          f_rows =
+            Enum.map(files, fn f ->
+              ["-", f["name"] || "?", format_size(f["size"]), format_datetime(f["created_at"])]
+            end)
+
+          {hdrs, d_rows, f_rows}
+        end
+
+      IO.puts("")
+      Formatter.table(headers, dir_rows ++ file_rows)
     end
 
     IO.puts("")
-    Formatter.dim("  #{length(dirs)} directories, #{length(files)} files")
+    Formatter.dim("#{length(dirs)} directories, #{length(files)} files")
   end
 
   # ── mkdir ──────────────────────────────────────────────────────────────
@@ -270,15 +280,31 @@ defmodule Dust.CLI.Commands.Fs do
   end
 
   defp do_upload(config, local_path, dir_id, file_name) do
-    Formatter.info("Uploading #{file_name} (#{format_file_size(local_path)})...")
+    label = "#{file_name}  #{format_file_size(local_path)}"
 
-    case Client.post(config, "/api/v1/fs/upload", %{
-           local_path: local_path,
-           dir_id: dir_id,
-           file_name: file_name
-         }) do
+    ws =
+      case Progress.start(config, label, :upload) do
+        {:ok, pid} -> pid
+        _ ->
+          Formatter.info("Uploading #{label}...")
+          nil
+      end
+
+    result =
+      Task.async(fn ->
+        Client.post(config, "/api/v1/fs/upload", %{
+          local_path: local_path,
+          dir_id: dir_id,
+          file_name: file_name
+        })
+      end)
+      |> Task.await(:infinity)
+
+    if ws, do: Progress.stop(ws)
+
+    case result do
       {201, {:ok, %{"file_id" => file_id}}} ->
-        Formatter.success("Uploaded #{file_name} (#{file_id})")
+        Formatter.success("#{file_name} uploaded (#{file_id})")
         0
 
       {_, {:ok, %{"error" => reason}}} ->
@@ -306,28 +332,7 @@ defmodule Dust.CLI.Commands.Fs do
 
         with :ok <- validate_path(remote_path),
              {:ok, file_id} <- resolve_file_path(config, remote_path) do
-          Formatter.info("Downloading #{remote_path} → #{expanded_dest}...")
-
-          case Client.post(config, "/api/v1/fs/download", %{
-                 file_id: file_id,
-                 dest_path: expanded_dest
-               }) do
-            {200, {:ok, %{"path" => path}}} ->
-              Formatter.success("Downloaded to #{path}")
-              0
-
-            {_, {:ok, %{"error" => reason}}} ->
-              Formatter.error("Download failed: #{reason}")
-              1
-
-            {:error, {:failed_connect, _}} ->
-              Formatter.daemon_unreachable()
-              1
-
-            other ->
-              Formatter.error("Unexpected response: #{inspect(other)}")
-              1
-          end
+          do_download(config, file_id, remote_path, expanded_dest)
         else
           {:error, :no_root} ->
             Formatter.error("No root directory found.")
@@ -355,6 +360,47 @@ defmodule Dust.CLI.Commands.Fs do
     end
   end
 
+  defp do_download(config, file_id, remote_path, dest_path) do
+    label = "#{Path.basename(remote_path)} → #{dest_path}"
+
+    ws =
+      case Progress.start(config, label, :download) do
+        {:ok, pid} -> pid
+        _ ->
+          Formatter.info("Downloading #{label}...")
+          nil
+      end
+
+    result =
+      Task.async(fn ->
+        Client.post(config, "/api/v1/fs/download", %{
+          file_id: file_id,
+          dest_path: dest_path
+        })
+      end)
+      |> Task.await(:infinity)
+
+    if ws, do: Progress.stop(ws)
+
+    case result do
+      {200, {:ok, %{"path" => path}}} ->
+        Formatter.success("Downloaded to #{path}")
+        0
+
+      {_, {:ok, %{"error" => reason}}} ->
+        Formatter.error("Download failed: #{reason}")
+        1
+
+      {:error, {:failed_connect, _}} ->
+        Formatter.daemon_unreachable()
+        1
+
+      other ->
+        Formatter.error("Unexpected response: #{inspect(other)}")
+        1
+    end
+  end
+
   # ── stat ───────────────────────────────────────────────────────────────
 
   def stat(config, args) do
@@ -367,10 +413,8 @@ defmodule Dust.CLI.Commands.Fs do
              {:ok, file_id} <- resolve_file_path(config, path) do
           case Client.get(config, "/api/v1/fs/stat/#{file_id}") do
             {200, {:ok, %{"file" => file}}} ->
-              Formatter.heading("File Info")
               IO.puts("")
-
-              Formatter.kv([
+              Formatter.kv_box("File Info", [
                 {"Name", file["name"] || "—"},
                 {"ID", file["id"] || file_id},
                 {"MIME", file["mime"] || "—"},
@@ -378,7 +422,6 @@ defmodule Dust.CLI.Commands.Fs do
                 {"Checksum", file["checksum"] || "—"},
                 {"Created", file["created_at"] || "—"}
               ])
-
               IO.puts("")
               0
 
@@ -418,6 +461,130 @@ defmodule Dust.CLI.Commands.Fs do
         IO.puts("  Usage: dustctl stat PATH")
         IO.puts("  Example: dustctl stat /photos/img.jpg")
         1
+    end
+  end
+
+  # ── mv ─────────────────────────────────────────────────────────────────
+
+  def mv(config, args) do
+    require_unlocked!(config)
+    {_opts, rest, _} = OptionParser.parse(args, strict: [])
+
+    case rest do
+      [src_path, dest_path | _] ->
+        with :ok <- validate_path(src_path),
+             :ok <- validate_path(dest_path),
+             {:ok, {src_type, src_id, src_name}} <- resolve_any_path_with_info(config, src_path),
+             {:ok, dest_dir_id, new_name} <- resolve_move_dest(config, dest_path, src_name) do
+          case Client.post(config, "/api/v1/fs/mv", %{
+                 id: src_id,
+                 type: to_string(src_type),
+                 dest_dir_id: dest_dir_id,
+                 new_name: new_name
+               }) do
+            {200, {:ok, %{"status" => "moved"}}} ->
+              Formatter.success("#{src_path} → #{dest_path}")
+              0
+
+            {400, {:ok, %{"error" => "cannot_move_root"}}} ->
+              Formatter.error("Cannot move the root directory")
+              1
+
+            {400, {:ok, %{"error" => "cycle_detected"}}} ->
+              Formatter.error("Cannot move a directory into itself or one of its descendants")
+              1
+
+            {400, {:ok, %{"error" => "invalid_name"}}} ->
+              Formatter.error("Invalid destination name")
+              1
+
+            {404, {:ok, %{"error" => "source_not_found"}}} ->
+              Formatter.error("Source not found: #{src_path}")
+              1
+
+            {404, {:ok, %{"error" => "destination_not_found"}}} ->
+              Formatter.error("Destination directory not found")
+              1
+
+            {409, {:ok, %{"error" => "name_conflict"}}} ->
+              Formatter.error("A file or directory named '#{new_name}' already exists at the destination")
+              1
+
+            {503, _} ->
+              Formatter.error("Storage unavailable; try again later")
+              1
+
+            {:error, {:failed_connect, _}} ->
+              Formatter.daemon_unreachable()
+              1
+
+            other ->
+              Formatter.error("Unexpected response: #{inspect(other)}")
+              1
+          end
+        else
+          {:error, :no_root} ->
+            Formatter.error("No root directory found.")
+            Formatter.info("Run: dustctl init")
+            1
+
+          {:error, {:not_found, segment}} ->
+            Formatter.error("Path not found: '#{segment}'")
+            1
+
+          {:error, {:invalid_path, reason}} ->
+            Formatter.error("Invalid path: #{reason}")
+            1
+
+          {:error, _} ->
+            Formatter.error("Failed to resolve paths")
+            1
+        end
+
+      _ ->
+        Formatter.error("Missing arguments")
+        IO.puts("  Usage: dustctl mv SOURCE DEST")
+        IO.puts("  Examples:")
+        IO.puts("    dustctl mv /photos/img.jpg /archive/")
+        IO.puts("    dustctl mv /photos/img.jpg /archive/renamed.jpg")
+        IO.puts("    dustctl mv /old-folder /new-folder")
+        1
+    end
+  end
+
+  # Resolves destination for a move: if DEST is an existing directory, move into
+  # it keeping src_name; otherwise treat parent(DEST) as the directory and
+  # basename(DEST) as the new name.
+  defp resolve_move_dest(config, dest_path, src_name) do
+    target =
+      if String.ends_with?(dest_path, "/") do
+        trimmed = String.trim_trailing(dest_path, "/")
+        if trimmed == "", do: "/", else: trimmed
+      else
+        dest_path
+      end
+
+    explicit_dir = String.ends_with?(dest_path, "/")
+
+    case resolve_dir_path(config, target) do
+      {:ok, dir_id} ->
+        {:ok, dir_id, src_name}
+
+      {:error, _} when not explicit_dir ->
+        parent_path = Path.dirname(dest_path)
+        new_name = Path.basename(dest_path)
+
+        if new_name == "" or new_name == "." do
+          {:error, {:invalid_path, "invalid destination name"}}
+        else
+          case resolve_dir_path(config, parent_path) do
+            {:ok, parent_dir_id} -> {:ok, parent_dir_id, new_name}
+            err -> err
+          end
+        end
+
+      err ->
+        err
     end
   end
 
@@ -548,6 +715,40 @@ defmodule Dust.CLI.Commands.Fs do
     end
   end
 
+  defp resolve_any_path_with_info(config, "/") do
+    case get_root_dir_id(config) do
+      {:ok, id} -> {:ok, {:dir, id, "/"}}
+      err -> err
+    end
+  end
+
+  defp resolve_any_path_with_info(config, path) do
+    dir_path = Path.dirname(path)
+    name = Path.basename(path)
+
+    with {:ok, parent_id} <- resolve_dir_path(config, dir_path) do
+      case Client.get(config, "/api/v1/fs/ls/#{parent_id}") do
+        {200, {:ok, body}} ->
+          dirs = Map.get(body, "dirs", [])
+          files = Map.get(body, "files", [])
+
+          cond do
+            dir = Enum.find(dirs, fn d -> d["name"] == name end) ->
+              {:ok, {:dir, dir["id"], name}}
+
+            file = Enum.find(files, fn f -> f["name"] == name end) ->
+              {:ok, {:file, file["id"], name}}
+
+            true ->
+              {:error, {:not_found, name}}
+          end
+
+        _ ->
+          {:error, :api_error}
+      end
+    end
+  end
+
   defp resolve_any_path(config, path) do
     dir_path = Path.dirname(path)
     name = Path.basename(path)
@@ -600,6 +801,29 @@ defmodule Dust.CLI.Commands.Fs do
     case Client.get(config, "/api/v1/config") do
       {200, {:ok, %{"config" => %{"root_dir_id" => id}}}} when is_binary(id) and id != "" -> id
       _ -> nil
+    end
+  end
+
+  defp format_datetime(nil), do: "—"
+  defp format_datetime(""), do: "—"
+
+  defp format_datetime(dt_str) do
+    case NaiveDateTime.from_iso8601(dt_str) do
+      {:ok, dt} ->
+        :io_lib.format("~4..0B-~2..0B-~2..0B ~2..0B:~2..0B",
+          [dt.year, dt.month, dt.day, dt.hour, dt.minute])
+        |> IO.iodata_to_binary()
+
+      _ ->
+        case DateTime.from_iso8601(dt_str) do
+          {:ok, dt, _} ->
+            :io_lib.format("~4..0B-~2..0B-~2..0B ~2..0B:~2..0B",
+              [dt.year, dt.month, dt.day, dt.hour, dt.minute])
+            |> IO.iodata_to_binary()
+
+          _ ->
+            dt_str
+        end
     end
   end
 

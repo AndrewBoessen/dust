@@ -129,6 +129,58 @@ defmodule Dust.Api.Handlers.FsHandler do
     end
   end
 
+  @doc "Move (and optionally rename) a file or directory."
+  @spec move(Plug.Conn.t()) :: Plug.Conn.t()
+  def move(conn) do
+    case conn.body_params do
+      %{"id" => id, "type" => type, "dest_dir_id" => dest_dir_id, "new_name" => new_name}
+      when type in ["file", "dir"] and is_binary(new_name) and new_name != "" ->
+        result =
+          case type do
+            "file" -> FileSystem.move_file(id, dest_dir_id, new_name)
+            "dir" -> FileSystem.move_dir(id, dest_dir_id, new_name)
+          end
+
+        case result do
+          :ok ->
+            json_response(conn, 200, %{status: "moved", id: id})
+
+          {:error, :not_found} ->
+            json_response(conn, 404, %{error: "source_not_found"})
+
+          {:error, :dest_not_found} ->
+            json_response(conn, 404, %{error: "destination_not_found"})
+
+          {:error, :cannot_move_root} ->
+            json_response(conn, 400, %{error: "cannot_move_root"})
+
+          {:error, :cycle} ->
+            json_response(conn, 400, %{error: "cycle_detected"})
+
+          {:error, :name_conflict} ->
+            json_response(conn, 409, %{error: "name_conflict"})
+
+          {:error, :crdt_unavailable} ->
+            json_response(conn, 503, %{error: "crdt_unavailable"})
+        end
+
+      %{"type" => type} when type not in ["file", "dir"] ->
+        json_response(conn, 400, %{
+          error: "invalid_type",
+          message: "'type' must be \"file\" or \"dir\""
+        })
+
+      %{"new_name" => ""} ->
+        json_response(conn, 400, %{error: "invalid_name", message: "'new_name' must not be empty"})
+
+      _ ->
+        json_response(conn, 400, %{
+          error: "missing_fields",
+          message: "'id', 'type', 'dest_dir_id', and 'new_name' are required"
+        })
+    end
+  end
+
   @doc "Remove a file or directory."
   @spec remove(Plug.Conn.t(), String.t()) :: Plug.Conn.t()
   def remove(conn, id) do
@@ -155,7 +207,7 @@ defmodule Dust.Api.Handlers.FsHandler do
 
   defp serialize_meta(meta) when is_map(meta) do
     meta
-    |> Map.take([:type, :size, :mime, :checksum, :created_at, :updated_at])
+    |> Map.take([:id, :name, :size, :mime, :checksum, :created_at])
     |> Enum.into(%{}, fn {k, v} -> {k, to_string(v)} end)
   end
 

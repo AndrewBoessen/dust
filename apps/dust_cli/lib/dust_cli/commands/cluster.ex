@@ -28,22 +28,20 @@ defmodule Dust.CLI.Commands.Cluster do
   end
 
   defp display_nodes(nodes) do
-    Formatter.heading("Cluster Nodes")
     IO.puts("")
-
     headers = ["Node", "Status", "Fitness", "Role"]
 
     rows =
       Enum.map(nodes, fn node ->
-        status = if node["online"], do: "🟢 online", else: "🔴 offline"
-        role = if node["self"], do: "← this node", else: ""
+        status = if node["online"], do: "online", else: "offline"
+        role = if node["self"], do: "this node", else: ""
         fitness = format_fitness(node["fitness"])
         [node["name"], status, fitness, role]
       end)
 
     Formatter.table(headers, rows)
     IO.puts("")
-    Formatter.dim("  #{length(nodes)} total node(s)")
+    Formatter.dim("#{length(nodes)} total node(s)")
   end
 
   defp format_fitness(nil), do: "—"
@@ -60,11 +58,14 @@ defmodule Dust.CLI.Commands.Cluster do
         IO.puts("")
         Formatter.success("Invite token created")
         IO.puts("")
-        IO.puts("  To join this network from another machine, run:")
+        Formatter.info_box("Join Command", [
+          "To join this network from another machine:\n\n",
+          Owl.Data.tag("  dustctl join #{body["join_ip"]} #{body["token"]}", [:bright, :cyan]),
+          "\n\n",
+          Owl.Data.tag("! ", :yellow),
+          "One-time use · expires in 10 minutes"
+        ])
         IO.puts("")
-        IO.puts("    \e[1mdustctl join #{body["join_ip"]} #{body["token"]}\e[0m")
-        IO.puts("")
-        Formatter.warning("This token can only be used once and expires in 10 minutes.")
         0
 
       {_, {:ok, %{"error" => reason}}} ->
@@ -93,7 +94,7 @@ defmodule Dust.CLI.Commands.Cluster do
                token: token
              }) do
           {200, {:ok, %{"status" => "joined"}}} ->
-            Formatter.success("Successfully joined the network via #{peer_ip}")
+            Formatter.success("Joined the network via #{peer_ip}")
             IO.puts("")
             Formatter.info("Run 'dustctl nodes' to see cluster peers.")
             Formatter.info("Run 'dustctl unlock' to unlock the key store with the network password.")

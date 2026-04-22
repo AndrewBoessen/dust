@@ -21,17 +21,15 @@ defmodule Dust.CLI.Commands.Config do
   defp show(config) do
     case Client.get(config, "/api/v1/config") do
       {200, {:ok, %{"config" => cfg}}} ->
-        Formatter.heading("Configuration")
-        IO.puts("")
-
-        pairs =
+        rows =
           cfg
           |> Enum.sort_by(fn {k, _} -> k end)
-          |> Enum.map(fn {k, v} -> {k, format_value(k, v)} end)
+          |> Enum.map(fn {k, v} -> [to_string(k), format_value(k, v)] end)
 
-        Formatter.kv(pairs)
         IO.puts("")
-        Formatter.dim("  Update with: dustctl config set <key> <value>")
+        Formatter.table(["Key", "Value"], rows)
+        IO.puts("")
+        Formatter.dim("Update with: dustctl config set <key> <value>")
         0
 
       {:error, {:failed_connect, _}} ->

@@ -22,21 +22,19 @@ defmodule Dust.CLI.Commands.Gc do
   defp stats(config) do
     case Client.get(config, "/api/v1/gc/stats") do
       {200, {:ok, body}} ->
-        Formatter.heading("Garbage Collection Statistics")
-        IO.puts("")
-
         last_sweep =
           case body["last_sweep_at"] do
             nil -> "never"
             ts -> ts
           end
 
-        Formatter.kv([
+        IO.puts("")
+        Formatter.kv_box("GC Statistics", [
           {"Last sweep", last_sweep},
           {"Orphans removed", body["orphans_removed"] || 0},
           {"Replicas removed", body["replicas_removed"] || 0}
         ])
-
+        IO.puts("")
         0
 
       {:error, {:failed_connect, _}} ->
@@ -57,7 +55,7 @@ defmodule Dust.CLI.Commands.Gc do
     case Client.post(config, "/api/v1/gc/sweep") do
       {202, _} ->
         Formatter.success("GC sweep triggered")
-        Formatter.dim("  Run 'dustctl gc stats' to see results after completion.")
+        Formatter.dim("Run 'dustctl gc stats' to see results after completion.")
         0
 
       {:error, {:failed_connect, _}} ->
