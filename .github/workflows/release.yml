@@ -47,9 +47,7 @@ jobs:
       - name: Cache deps
         uses: actions/cache@v4
         with:
-          path: |
-            deps
-            _build/prod
+          path: deps
           key: server-linux-x86_64-${{ hashFiles('**/mix.lock') }}
           restore-keys: server-linux-x86_64-
 
@@ -110,9 +108,7 @@ jobs:
       - name: Cache deps
         uses: actions/cache@v4
         with:
-          path: |
-            deps
-            _build/prod
+          path: deps
           key: server-linux-aarch64-${{ hashFiles('**/mix.lock') }}
           restore-keys: server-linux-aarch64-
 
@@ -171,9 +167,7 @@ jobs:
       - name: Cache deps
         uses: actions/cache@v4
         with:
-          path: |
-            deps
-            _build/prod
+          path: deps
           key: server-macos-x86_64-${{ hashFiles('**/mix.lock') }}
           restore-keys: server-macos-x86_64-
 
@@ -232,9 +226,7 @@ jobs:
       - name: Cache deps
         uses: actions/cache@v4
         with:
-          path: |
-            deps
-            _build/prod
+          path: deps
           key: server-macos-aarch64-${{ hashFiles('**/mix.lock') }}
           restore-keys: server-macos-aarch64-
 
@@ -301,9 +293,7 @@ jobs:
       - name: Cache deps
         uses: actions/cache@v4
         with:
-          path: |
-            deps
-            _build/prod
+          path: deps
           key: server-windows-x86_64-${{ hashFiles('**/mix.lock') }}
           restore-keys: server-windows-x86_64-
 
@@ -410,9 +400,7 @@ jobs:
       - name: Cache deps
         uses: actions/cache@v4
         with:
-          path: |
-            deps
-            _build/prod
+          path: deps
           key: cli-${{ matrix.target }}-${{ hashFiles('**/mix.lock') }}
           restore-keys: cli-${{ matrix.target }}-
 
