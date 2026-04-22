@@ -54,6 +54,9 @@ jobs:
       - name: Install Elixir dependencies
         run: mix deps.get --only prod
 
+      - name: Log build commit
+        run: echo "Building server (linux/x86_64) at commit ${{ github.sha }}"
+
       - name: Build Go sidecar
         run: |
           cd apps/dust_bridge/native/tsnet_sidecar
@@ -115,6 +118,9 @@ jobs:
       - name: Install Elixir dependencies
         run: mix deps.get --only prod
 
+      - name: Log build commit
+        run: echo "Building server (linux/aarch64) at commit ${{ github.sha }}"
+
       - name: Build Go sidecar
         run: |
           cd apps/dust_bridge/native/tsnet_sidecar
@@ -174,6 +180,9 @@ jobs:
       - name: Install Elixir dependencies
         run: mix deps.get --only prod
 
+      - name: Log build commit
+        run: echo "Building server (macos/x86_64) at commit ${{ github.sha }}"
+
       - name: Build Go sidecar
         run: |
           cd apps/dust_bridge/native/tsnet_sidecar
@@ -232,6 +241,9 @@ jobs:
 
       - name: Install Elixir dependencies
         run: mix deps.get --only prod
+
+      - name: Log build commit
+        run: echo "Building server (macos/aarch64) at commit ${{ github.sha }}"
 
       - name: Build Go sidecar
         run: |
@@ -299,6 +311,9 @@ jobs:
 
       - name: Install Elixir dependencies
         run: mix deps.get --only prod
+
+      - name: Log build commit
+        run: echo "Building server (windows/x86_64) at commit ${{ github.sha }}"
 
       - name: Build Go sidecar
         run: |
@@ -406,6 +421,9 @@ jobs:
 
       - name: Install Elixir dependencies
         run: mix deps.get --only prod
+
+      - name: Log build commit
+        run: echo "Building CLI (${{ matrix.target }}) at commit ${{ github.sha }}"
 
       - name: Build CLI binary
         working-directory: apps/dust_cli
