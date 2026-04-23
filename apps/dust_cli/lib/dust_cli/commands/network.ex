@@ -34,9 +34,9 @@ defmodule Dust.CLI.Commands.Network do
           if auth_url do
             auth_url
           else
-            Owl.Spinner.start(id: :auth_poll, labels: %{processing: "Checking for login URL..."})
+            Owl.Spinner.start(id: :auth_poll, labels: [processing: "Checking for login URL..."])
             url = poll_for_auth_url(config, 15)
-            Owl.Spinner.stop(id: :auth_poll, resolution: :ok)
+            spinner_stop(id: :auth_poll, resolution: :ok)
             url
           end
 
@@ -50,11 +50,11 @@ defmodule Dust.CLI.Commands.Network do
           Formatter.info("Waiting for authentication (press Ctrl+C to cancel)...")
           IO.puts("")
 
-          Owl.Spinner.start(id: :auth_wait, labels: %{processing: "Waiting for Tailscale authentication..."})
+          Owl.Spinner.start(id: :auth_wait, labels: [processing: "Waiting for Tailscale authentication..."])
 
           case poll_for_auth(config, 120) do
             :ok ->
-              Owl.Spinner.stop(id: :auth_wait, resolution: :ok, label: "Authentication successful")
+              spinner_stop(id: :auth_wait, resolution: :ok, label: "Authentication successful")
               IO.puts("")
 
               case Client.get(config, "/api/v1/status") do
@@ -68,7 +68,7 @@ defmodule Dust.CLI.Commands.Network do
               0
 
             :timeout ->
-              Owl.Spinner.stop(id: :auth_wait, resolution: :error, label: "Timed out waiting for authentication")
+              spinner_stop(id: :auth_wait, resolution: :error, label: "Timed out waiting for authentication")
               IO.puts("  You can re-run 'dustctl auth' to check again.")
               1
           end
@@ -217,6 +217,12 @@ defmodule Dust.CLI.Commands.Network do
       _ ->
         poll_for_auth(config, remaining - 2)
     end
+  end
+
+  defp spinner_stop(opts) do
+    Owl.Spinner.stop(opts)
+  rescue
+    _ -> :ok
   end
 
   defp show_auth_instructions do
