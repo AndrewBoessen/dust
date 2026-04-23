@@ -6,8 +6,8 @@ Wants=network-online.target
 
 [Service]
 Type=exec
-ExecStart=/usr/local/bin/dust start
-ExecStop=/usr/local/bin/dust stop
+ExecStart=/opt/dust/bin/dust start
+ExecStop=/opt/dust/bin/dust stop
 Restart=on-failure
 RestartSec=5
 

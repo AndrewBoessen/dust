@@ -279,7 +279,12 @@ defmodule Dust.Utilities.Config do
   end
 
   @spec default_persist_dir() :: Path.t()
-  defp default_persist_dir, do: Path.join(System.user_home!(), ".dust")
+  defp default_persist_dir do
+    case System.get_env("DUST_DATA_DIR") do
+      nil -> Path.join(System.user_home!(), ".dust")
+      dir -> dir
+    end
+  end
 
   # ── YAML I/O ──────────────────────────────────────────────────────────
 

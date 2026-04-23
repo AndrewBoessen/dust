@@ -41,18 +41,18 @@ Verify the download against the `SHA256SUMS.txt` included with each release.
 curl -LO https://github.com/AndrewBoessen/dust/releases/latest/download/dust-server-linux-x86_64.tar.gz
 tar -xzf dust-server-linux-x86_64.tar.gz
 
-# Move to a system path
-sudo mv dust/bin/dust /usr/local/bin/
+# Install the release to /opt/dust
+sudo cp -r dust /opt/dust
 
 # Start the daemon
-dust start
+/opt/dust/bin/dust start
 ```
 
 To install as a systemd service for automatic startup:
 
 ```bash
 # Copy the service file
-sudo cp dust/service/linux/dust.service /etc/systemd/system/
+sudo cp /opt/dust/service/linux/dust.service /etc/systemd/system/
 
 # Enable and start
 sudo systemctl daemon-reload
