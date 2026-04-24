@@ -13,12 +13,18 @@ defmodule Dust.CLI.Progress do
         label: label,
         event_type: @type_to_event[type],
         total: nil,
-        current: 0
+        current: 0,
+        caller: self()
       }, extra_headers: [{"Authorization", "Bearer #{token}"}])
     end
   end
 
   def stop(pid) when is_pid(pid) do
+    receive do
+      :transfer_complete -> :ok
+    after
+      200 -> :ok
+    end
     Owl.LiveScreen.await_render()
     Process.exit(pid, :normal)
   end
@@ -38,6 +44,10 @@ defmodule Dust.CLI.Progress do
 
         if step > 0 do
           Owl.ProgressBar.inc(id: :transfer, step: step)
+        end
+
+        if chunk >= total do
+          send(state.caller, :transfer_complete)
         end
 
         {:ok, %{state | total: total, current: chunk}}
