@@ -108,43 +108,45 @@ dust-service.exe start
 
 `dustctl` is the command-line client for interacting with a running Dust daemon. Download the latest CLI release for your platform from the [GitHub Releases](https://github.com/AndrewBoessen/dust/releases) page.
 
-| Platform                      | Artifact                       |
-| ----------------------------- | ------------------------------ |
-| Linux x86_64                  | `dustctl-linux-x86_64.tar.gz`  |
-| Linux aarch64                 | `dustctl-linux-aarch64.tar.gz` |
-| macOS x86_64 (Intel)          | `dustctl-macos-x86_64.tar.gz`  |
-| macOS aarch64 (Apple Silicon) | `dustctl-macos-aarch64.tar.gz` |
-| Windows x86_64                | `dustctl-windows-x86_64.zip`   |
+| Platform                      | Artifact                      |
+| ----------------------------- | ----------------------------- |
+| Linux x86_64                  | `dustctl_linux_x86_64`        |
+| Linux aarch64                 | `dustctl_linux_aarch64`       |
+| macOS x86_64 (Intel)          | `dustctl_macos_x86_64`        |
+| macOS aarch64 (Apple Silicon) | `dustctl_macos_aarch64`       |
+| Windows x86_64                | `dustctl_windows_x86_64.exe`  |
 
 #### Linux
 
 ```bash
-# Download and extract
-curl -LO https://github.com/AndrewBoessen/dust/releases/latest/download/dustctl-linux-x86_64.tar.gz
-tar -xzf dustctl-linux-x86_64.tar.gz
+# Download the binary
+curl -LO https://github.com/AndrewBoessen/dust/releases/latest/download/dustctl_linux_x86_64
 
-# Install to a directory on your PATH
-sudo mv dustctl /usr/local/bin/
+# Make it executable and install to a directory on your PATH
+chmod +x dustctl_linux_x86_64
+sudo mv dustctl_linux_x86_64 /usr/local/bin/dustctl
 ```
 
 #### macOS
 
 ```bash
-# Download and extract
-curl -LO https://github.com/AndrewBoessen/dust/releases/latest/download/dustctl-macos-aarch64.tar.gz
-tar -xzf dustctl-macos-aarch64.tar.gz
+# Download the binary (Apple Silicon)
+curl -LO https://github.com/AndrewBoessen/dust/releases/latest/download/dustctl_macos_aarch64
 
-# Install to a directory on your PATH
-sudo mv dustctl /usr/local/bin/
+# Make it executable and install to a directory on your PATH
+chmod +x dustctl_macos_aarch64
+sudo mv dustctl_macos_aarch64 /usr/local/bin/dustctl
 
 # macOS may quarantine the binary on first run — remove the quarantine attribute
 xattr -d com.apple.quarantine /usr/local/bin/dustctl
 ```
 
+For Intel Macs, replace `dustctl_macos_aarch64` with `dustctl_macos_x86_64`.
+
 #### Windows
 
-1. Download `dustctl-windows-x86_64.zip` from the releases page
-2. Extract `dustctl.exe` to `C:\Program Files\Dust\bin\`
+1. Download `dustctl_windows_x86_64.exe` from the releases page
+2. Rename it to `dustctl.exe` and move it to `C:\Program Files\Dust\bin\`
 3. Ensure `C:\Program Files\Dust\bin` is on your system `PATH`
 
 Verify the install:
