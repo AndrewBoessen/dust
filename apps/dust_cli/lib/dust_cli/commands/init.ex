@@ -85,7 +85,7 @@ defmodule Dust.CLI.Commands.Init do
             return_code(1)
 
           other ->
-            Formatter.error("Failed to unlock: #{inspect(other)}")
+            Formatter.api_error(other)
             return_code(1)
         end
 
@@ -185,8 +185,14 @@ defmodule Dust.CLI.Commands.Init do
         {_, {:ok, %{"error" => reason}}} ->
           Owl.Spinner.stop(id: :join, resolution: :error, label: "Failed to join: #{reason}")
 
-        {:error, reason} ->
-          Owl.Spinner.stop(id: :join, resolution: :error, label: "Connection error: #{inspect(reason)}")
+        {:error, {:failed_connect, _}} ->
+          Owl.Spinner.stop(id: :join, resolution: :error, label: "Cannot connect to the daemon")
+
+        {:error, {:timeout, _}} ->
+          Owl.Spinner.stop(id: :join, resolution: :error, label: "Request timed out")
+
+        {:error, _reason} ->
+          Owl.Spinner.stop(id: :join, resolution: :error, label: "Connection error — is the daemon running?")
       end
     end
   end

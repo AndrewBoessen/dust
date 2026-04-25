@@ -92,13 +92,8 @@ defmodule Dust.CLI.Commands.Network do
           1
         end
 
-      {:error, {:failed_connect, _}} ->
-        Formatter.daemon_unreachable()
-        1
-
       other ->
-        Formatter.error("Unexpected response: #{inspect(other)}")
-        1
+        Formatter.api_error(other)
     end
   end
 
@@ -143,13 +138,8 @@ defmodule Dust.CLI.Commands.Network do
 
         if connected, do: 0, else: 1
 
-      {:error, {:failed_connect, _}} ->
-        Formatter.daemon_unreachable()
-        1
-
       other ->
-        Formatter.error("Unexpected response: #{inspect(other)}")
-        1
+        Formatter.api_error(other)
     end
   end
 

@@ -32,13 +32,8 @@ defmodule Dust.CLI.Commands.Config do
         Formatter.dim("Update with: dustctl config set <key> <value>")
         0
 
-      {:error, {:failed_connect, _}} ->
-        Formatter.daemon_unreachable()
-        1
-
       other ->
-        Formatter.error("Unexpected response: #{inspect(other)}")
-        1
+        Formatter.api_error(other)
     end
   end
 
@@ -69,13 +64,8 @@ defmodule Dust.CLI.Commands.Config do
             Formatter.error("Failed: #{reason}")
             1
 
-          {:error, {:failed_connect, _}} ->
-            Formatter.daemon_unreachable()
-            1
-
           other ->
-            Formatter.error("Unexpected response: #{inspect(other)}")
-            1
+            Formatter.api_error(other)
         end
 
       [_key] ->
