@@ -1,9 +1,6 @@
 defmodule Dust.CLI.Formatter do
   @moduledoc false
 
-  def set_color(false), do: System.put_env("NO_COLOR", "1")
-  def set_color(true), do: :ok
-
   # ── Status messages ────────────────────────────────────────────────────
 
   def success(msg), do: Owl.IO.puts([Owl.Data.tag("✓ ", :green), msg])
