@@ -90,6 +90,28 @@ defmodule Dust.Api.Router do
     Dust.Api.Handlers.ConfigHandler.update_config(conn)
   end
 
+  # ── Service Management ─────────────────────────────────────────────────
+
+  post "/api/v1/service/install" do
+    Dust.Api.Handlers.ServiceHandler.install(conn)
+  end
+
+  delete "/api/v1/service/uninstall" do
+    Dust.Api.Handlers.ServiceHandler.uninstall(conn)
+  end
+
+  get "/api/v1/service/status" do
+    Dust.Api.Handlers.ServiceHandler.status(conn)
+  end
+
+  post "/api/v1/service/start" do
+    Dust.Api.Handlers.ServiceHandler.start(conn)
+  end
+
+  post "/api/v1/service/stop" do
+    Dust.Api.Handlers.ServiceHandler.stop(conn)
+  end
+
   # ── Garbage Collection ─────────────────────────────────────────────────
 
   get "/api/v1/gc/stats" do

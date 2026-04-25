@@ -87,19 +87,37 @@ defmodule Dust.CLI.Commands.Daemon do
   def run(config, ["install" | _]) do
     Formatter.info("Installing Dust as a system service...")
 
-    case Client.ping(config) do
-      :ok ->
-        install_service()
+    case Client.post(config, "/api/v1/service/install") do
+      {200, _} ->
+        Formatter.success("Service installed. It will start automatically on next reboot.")
+        0
 
-      :error ->
-        Formatter.warning("Daemon is not running. Installing service template manually...")
-        install_service()
+      {_status, {:ok, %{"error" => reason}}} ->
+        Formatter.error("Install failed: #{reason}")
+        1
+
+      {:error, _} ->
+        Formatter.error("Could not reach daemon. Make sure it is running first.")
+        1
     end
   end
 
-  def run(_config, ["uninstall" | _]) do
+  def run(config, ["uninstall" | _]) do
     Formatter.info("Removing Dust system service...")
-    uninstall_service()
+
+    case Client.delete(config, "/api/v1/service/uninstall") do
+      {200, _} ->
+        Formatter.success("Service removed.")
+        0
+
+      {_status, {:ok, %{"error" => reason}}} ->
+        Formatter.error("Uninstall failed: #{reason}")
+        1
+
+      {:error, _} ->
+        Formatter.error("Could not reach daemon. Make sure it is running first.")
+        1
+    end
   end
 
   def run(_config, args) do
@@ -131,105 +149,5 @@ defmodule Dust.CLI.Commands.Daemon do
       :ok -> :ok
       :error -> wait_ready(config, retries - 1)
     end
-  end
-
-  defp install_service do
-    case :os.type() do
-      {:unix, :linux} -> install_systemd()
-      {:unix, :darwin} -> install_launchd()
-      {:win32, _} -> install_winsw()
-      other ->
-        Formatter.error("Unsupported platform: #{inspect(other)}")
-        1
-    end
-  end
-
-  defp uninstall_service do
-    case :os.type() do
-      {:unix, :linux} -> uninstall_systemd()
-      {:unix, :darwin} -> uninstall_launchd()
-      {:win32, _} -> uninstall_winsv()
-      other ->
-        Formatter.error("Unsupported platform: #{inspect(other)}")
-        1
-    end
-  end
-
-  defp install_systemd do
-    service_src = find_service_template("linux/dust.service")
-
-    if service_src do
-      dest = "/etc/systemd/system/dust.service"
-
-      case System.cmd("sudo", ["cp", service_src, dest], stderr_to_stdout: true) do
-        {_, 0} ->
-          System.cmd("sudo", ["systemctl", "daemon-reload"])
-          System.cmd("sudo", ["systemctl", "enable", "dust"])
-          Formatter.success("Installed systemd service at #{dest}")
-          Formatter.info("Start with: sudo systemctl start dust")
-          0
-
-        {output, _} ->
-          Formatter.error("Failed to install: #{output}")
-          1
-      end
-    else
-      Formatter.error("Service template not found. Use the template from rel/service/linux/dust.service")
-      1
-    end
-  end
-
-  defp install_launchd do
-    service_src = find_service_template("macos/com.dust.daemon.plist")
-    dest = Path.join(System.user_home!(), "Library/LaunchAgents/com.dust.daemon.plist")
-
-    if service_src do
-      File.mkdir_p!(Path.dirname(dest))
-      File.cp!(service_src, dest)
-      System.cmd("launchctl", ["load", dest])
-      Formatter.success("Installed launchd service at #{dest}")
-      0
-    else
-      Formatter.error("Service template not found")
-      1
-    end
-  end
-
-  defp install_winsw do
-    Formatter.info("For Windows, download WinSW and use the template at rel/service/windows/dust-service.xml")
-    Formatter.info("See README for detailed instructions.")
-    0
-  end
-
-  defp uninstall_systemd do
-    System.cmd("sudo", ["systemctl", "stop", "dust"], stderr_to_stdout: true)
-    System.cmd("sudo", ["systemctl", "disable", "dust"], stderr_to_stdout: true)
-    System.cmd("sudo", ["rm", "-f", "/etc/systemd/system/dust.service"], stderr_to_stdout: true)
-    System.cmd("sudo", ["systemctl", "daemon-reload"], stderr_to_stdout: true)
-    Formatter.success("Removed systemd service")
-    0
-  end
-
-  defp uninstall_launchd do
-    plist = Path.join(System.user_home!(), "Library/LaunchAgents/com.dust.daemon.plist")
-    System.cmd("launchctl", ["unload", plist], stderr_to_stdout: true)
-    File.rm(plist)
-    Formatter.success("Removed launchd service")
-    0
-  end
-
-  defp uninstall_winsv do
-    Formatter.info("Run 'dust-service.exe uninstall' from the install directory")
-    0
-  end
-
-  defp find_service_template(relative) do
-    candidates = [
-      Path.expand("rel/service/#{relative}"),
-      Path.expand("../rel/service/#{relative}"),
-      Path.expand("../../rel/service/#{relative}")
-    ]
-
-    Enum.find(candidates, &File.exists?/1)
   end
 end
