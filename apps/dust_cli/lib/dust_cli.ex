@@ -55,7 +55,6 @@ defmodule Dust.CLI do
       --port PORT           Daemon port (default: 4884)
       --token TOKEN         API bearer token (default: read from data dir)
       --data-dir DIR        Data directory (default: ~/.dust)
-      --no-color            Disable colored output
   """
 
   alias Dust.CLI.{Client, Formatter, Commands}
@@ -82,8 +81,7 @@ defmodule Dust.CLI do
           host: :string,
           port: :integer,
           token: :string,
-          data_dir: :string,
-          no_color: :boolean
+          data_dir: :string
         ],
         aliases: [h: :host, p: :port, t: :token, d: :data_dir]
       )
@@ -92,11 +90,8 @@ defmodule Dust.CLI do
       host: Keyword.get(opts, :host, "127.0.0.1"),
       port: Keyword.get(opts, :port, 4884),
       token: Keyword.get(opts, :token),
-      data_dir: Keyword.get(opts, :data_dir, default_data_dir()),
-      no_color: Keyword.get(opts, :no_color, false)
+      data_dir: Keyword.get(opts, :data_dir, default_data_dir())
     }
-
-    if config.no_color, do: System.put_env("NO_COLOR", "1")
 
     {config, rest}
   end
@@ -284,7 +279,6 @@ defmodule Dust.CLI do
       %{"Option" => Owl.Data.tag("--port PORT", :cyan), "Description" => "Daemon port (default: 4884)"},
       %{"Option" => Owl.Data.tag("--token TOKEN", :cyan), "Description" => "API bearer token (default: read from data dir)"},
       %{"Option" => Owl.Data.tag("--data-dir DIR", :cyan), "Description" => "Data directory (default: ~/.dust)"},
-      %{"Option" => Owl.Data.tag("--no-color", :cyan), "Description" => "Disable colored output"}
     ]
 
     Owl.Table.new(options_rows,

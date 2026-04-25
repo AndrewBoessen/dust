@@ -31,13 +31,8 @@ defmodule Dust.CLI.Commands.Fs do
           Formatter.error("Directory not found: #{path}")
           1
 
-        {:error, {:failed_connect, _}} ->
-          Formatter.daemon_unreachable()
-          1
-
         other ->
-          Formatter.error("Unexpected response: #{inspect(other)}")
-          1
+          Formatter.api_error(other)
       end
     else
       {:error, :no_root} ->
@@ -147,13 +142,8 @@ defmodule Dust.CLI.Commands.Fs do
             Formatter.error("Failed to create root directory: #{reason}")
             1
 
-          {:error, {:failed_connect, _}} ->
-            Formatter.daemon_unreachable()
-            1
-
           other ->
-            Formatter.error("Unexpected response: #{inspect(other)}")
-            1
+            Formatter.api_error(other)
         end
 
       _id ->
@@ -181,13 +171,8 @@ defmodule Dust.CLI.Commands.Fs do
             Formatter.error("Failed to create directory: #{reason}")
             1
 
-          {:error, {:failed_connect, _}} ->
-            Formatter.daemon_unreachable()
-            1
-
           other ->
-            Formatter.error("Unexpected response: #{inspect(other)}")
-            1
+            Formatter.api_error(other)
         end
       else
         {:error, :no_root} ->
@@ -311,13 +296,8 @@ defmodule Dust.CLI.Commands.Fs do
         Formatter.error("Upload failed: #{reason}")
         1
 
-      {:error, {:failed_connect, _}} ->
-        Formatter.daemon_unreachable()
-        1
-
       other ->
-        Formatter.error("Unexpected response: #{inspect(other)}")
-        1
+        Formatter.api_error(other)
     end
   end
 
@@ -391,13 +371,8 @@ defmodule Dust.CLI.Commands.Fs do
         Formatter.error("Download failed: #{reason}")
         1
 
-      {:error, {:failed_connect, _}} ->
-        Formatter.daemon_unreachable()
-        1
-
       other ->
-        Formatter.error("Unexpected response: #{inspect(other)}")
-        1
+        Formatter.api_error(other)
     end
   end
 
@@ -429,13 +404,8 @@ defmodule Dust.CLI.Commands.Fs do
               Formatter.error("File not found: #{path}")
               1
 
-            {:error, {:failed_connect, _}} ->
-              Formatter.daemon_unreachable()
-              1
-
             other ->
-              Formatter.error("Unexpected response: #{inspect(other)}")
-              1
+              Formatter.api_error(other)
           end
         else
           {:error, :no_root} ->
@@ -514,13 +484,8 @@ defmodule Dust.CLI.Commands.Fs do
               Formatter.error("Storage unavailable; try again later")
               1
 
-            {:error, {:failed_connect, _}} ->
-              Formatter.daemon_unreachable()
-              1
-
             other ->
-              Formatter.error("Unexpected response: #{inspect(other)}")
-              1
+              Formatter.api_error(other)
           end
         else
           {:error, :no_root} ->
@@ -606,13 +571,8 @@ defmodule Dust.CLI.Commands.Fs do
               Formatter.error("Delete failed: #{reason}")
               1
 
-            {:error, {:failed_connect, _}} ->
-              Formatter.daemon_unreachable()
-              1
-
             other ->
-              Formatter.error("Unexpected response: #{inspect(other)}")
-              1
+              Formatter.api_error(other)
           end
         else
           {:error, :no_root} ->

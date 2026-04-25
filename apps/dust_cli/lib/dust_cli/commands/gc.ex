@@ -37,13 +37,8 @@ defmodule Dust.CLI.Commands.Gc do
         IO.puts("")
         0
 
-      {:error, {:failed_connect, _}} ->
-        Formatter.daemon_unreachable()
-        1
-
       other ->
-        Formatter.error("Unexpected response: #{inspect(other)}")
-        1
+        Formatter.api_error(other)
     end
   end
 
@@ -58,13 +53,8 @@ defmodule Dust.CLI.Commands.Gc do
         Formatter.dim("Run 'dustctl gc stats' to see results after completion.")
         0
 
-      {:error, {:failed_connect, _}} ->
-        Formatter.daemon_unreachable()
-        1
-
       other ->
-        Formatter.error("Unexpected response: #{inspect(other)}")
-        1
+        Formatter.api_error(other)
     end
   end
 end

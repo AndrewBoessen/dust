@@ -11,17 +11,8 @@ defmodule Dust.CLI.Commands.Status do
         display_status(body)
         0
 
-      {:error, {:failed_connect, _}} ->
-        Formatter.daemon_unreachable()
-        1
-
-      {:error, reason} ->
-        Formatter.error("Connection failed: #{inspect(reason)}")
-        1
-
       other ->
-        Formatter.error("Unexpected response: #{inspect(other)}")
-        1
+        Formatter.api_error(other)
     end
   end
 

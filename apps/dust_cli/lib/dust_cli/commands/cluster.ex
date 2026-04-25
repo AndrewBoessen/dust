@@ -17,13 +17,8 @@ defmodule Dust.CLI.Commands.Cluster do
         display_nodes(nodes)
         0
 
-      {:error, {:failed_connect, _}} ->
-        Formatter.daemon_unreachable()
-        1
-
       other ->
-        Formatter.error("Unexpected response: #{inspect(other)}")
-        1
+        Formatter.api_error(other)
     end
   end
 
@@ -72,13 +67,8 @@ defmodule Dust.CLI.Commands.Cluster do
         Formatter.error("Failed to create invite: #{reason}")
         1
 
-      {:error, {:failed_connect, _}} ->
-        Formatter.daemon_unreachable()
-        1
-
       other ->
-        Formatter.error("Unexpected response: #{inspect(other)}")
-        1
+        Formatter.api_error(other)
     end
   end
 
@@ -104,13 +94,8 @@ defmodule Dust.CLI.Commands.Cluster do
             Formatter.error("Join failed: #{reason}")
             1
 
-          {:error, {:failed_connect, _}} ->
-            Formatter.daemon_unreachable()
-            1
-
           other ->
-            Formatter.error("Unexpected response: #{inspect(other)}")
-            1
+            Formatter.api_error(other)
         end
 
       [_peer_ip] ->

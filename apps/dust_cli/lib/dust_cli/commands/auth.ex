@@ -38,13 +38,8 @@ defmodule Dust.CLI.Commands.Auth do
           Formatter.error("API authentication failed — check your api_token")
           1
 
-        {:error, {:failed_connect, _}} ->
-          Formatter.daemon_unreachable()
-          1
-
         other ->
-          Formatter.error("Unexpected response: #{inspect(other)}")
-          1
+          Formatter.api_error(other)
       end
     end
   end
@@ -55,13 +50,8 @@ defmodule Dust.CLI.Commands.Auth do
         Formatter.success("Key store locked")
         0
 
-      {:error, {:failed_connect, _}} ->
-        Formatter.daemon_unreachable()
-        1
-
       other ->
-        Formatter.error("Unexpected response: #{inspect(other)}")
-        1
+        Formatter.api_error(other)
     end
   end
 end
