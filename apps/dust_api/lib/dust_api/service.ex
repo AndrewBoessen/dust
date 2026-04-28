@@ -19,8 +19,6 @@ defmodule Dust.Api.Service do
 
   require Logger
 
-  @service_templates_dir "rel/service"
-
   # ── Public API ─────────────────────────────────────────────────────────
 
   @doc """
@@ -98,19 +96,19 @@ defmodule Dust.Api.Service do
   defp install_systemd do
     source = template_path("linux/dust.service")
 
-    with :ok <- copy_file(source, @systemd_unit_dest),
-         :ok <- run_cmd("systemctl", ["daemon-reload"]),
-         :ok <- run_cmd("systemctl", ["enable", "dust"]) do
+    with :ok <- run_cmd("sudo", ["cp", source, @systemd_unit_dest]),
+         :ok <- run_cmd("sudo", ["systemctl", "daemon-reload"]),
+         :ok <- run_cmd("sudo", ["systemctl", "enable", "dust"]) do
       Logger.info("Service: installed systemd unit at #{@systemd_unit_dest}")
       :ok
     end
   end
 
   defp uninstall_systemd do
-    with :ok <- run_cmd("systemctl", ["stop", "dust"]),
-         :ok <- run_cmd("systemctl", ["disable", "dust"]),
-         :ok <- delete_file(@systemd_unit_dest),
-         :ok <- run_cmd("systemctl", ["daemon-reload"]) do
+    with :ok <- run_cmd("sudo", ["systemctl", "stop", "dust"]),
+         :ok <- run_cmd("sudo", ["systemctl", "disable", "dust"]),
+         :ok <- run_cmd("sudo", ["rm", "-f", @systemd_unit_dest]),
+         :ok <- run_cmd("sudo", ["systemctl", "daemon-reload"]) do
       Logger.info("Service: removed systemd unit")
       :ok
     end
@@ -234,16 +232,8 @@ defmodule Dust.Api.Service do
   # ── Helpers ────────────────────────────────────────────────────────────
 
   defp template_path(relative) do
-    # In a release, templates are bundled under priv/
     priv_path = :code.priv_dir(:dust_api) |> to_string()
-    release_path = Path.join([priv_path, "service", relative])
-
-    if File.exists?(release_path) do
-      release_path
-    else
-      # Development: read from the project tree
-      Path.join([File.cwd!(), @service_templates_dir, relative])
-    end
+    Path.join([priv_path, "service", relative])
   end
 
   defp copy_file(source, dest) do
