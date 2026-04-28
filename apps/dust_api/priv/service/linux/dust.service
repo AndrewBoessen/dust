@@ -11,13 +11,6 @@ ExecStop=/opt/dust/bin/dust stop
 Restart=on-failure
 RestartSec=5
 
-# Security hardening
-NoNewPrivileges=yes
-ProtectSystem=strict
-ProtectHome=read-only
-ReadWritePaths=/var/lib/dust
-PrivateTmp=yes
-
 # Resource limits
 LimitNOFILE=65536
 
