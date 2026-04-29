@@ -86,14 +86,37 @@ defmodule Dust.CLI do
         aliases: [h: :host, p: :port, t: :token, d: :data_dir]
       )
 
+    explicit_data_dir = Keyword.get(opts, :data_dir)
+
     config = %{
       host: Keyword.get(opts, :host, "127.0.0.1"),
       port: Keyword.get(opts, :port, 4884),
       token: Keyword.get(opts, :token),
-      data_dir: Keyword.get(opts, :data_dir, default_data_dir())
+      data_dir: explicit_data_dir || default_data_dir()
     }
 
+    # If --data-dir was not explicitly set, ask the running daemon for its
+    # actual persist_dir. /api/v1/status is auth-exempt so no token needed.
+    config =
+      if explicit_data_dir do
+        config
+      else
+        resolve_data_dir_from_daemon(config)
+      end
+
     {config, rest}
+  end
+
+  defp resolve_data_dir_from_daemon(config) do
+    case Client.get(config, "/api/v1/status") do
+      {200, {:ok, %{"persist_dir" => dir}}} when is_binary(dir) and dir != "" ->
+        %{config | data_dir: dir}
+
+      _ ->
+        config
+    end
+  rescue
+    _ -> config
   end
 
   # ── Network connectivity guard ─────────────────────────────────────────
@@ -301,10 +324,7 @@ defmodule Dust.CLI do
         end
 
       _ ->
-        case System.get_env("DUST_DATA_DIR") do
-          nil -> Path.join(System.user_home!(), ".dust")
-          dir -> dir
-        end
+        Path.join(System.user_home!(), ".dust")
     end
   end
 end

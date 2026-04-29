@@ -96,10 +96,65 @@ defmodule Dust.Api.Service do
   defp install_systemd do
     source = template_path("linux/dust.service")
 
-    with :ok <- run_cmd("sudo", ["cp", source, @systemd_unit_dest]),
+    with {:ok, template} <- File.read(source),
+         {:ok, current_user} <- current_os_user(),
+         {:ok, home_dir} <- current_home_dir(),
+         content = inject_service_user(template, current_user, home_dir),
+         :ok <- write_service_file(content),
          :ok <- run_cmd("sudo", ["systemctl", "daemon-reload"]),
          :ok <- run_cmd("sudo", ["systemctl", "enable", "dust"]) do
-      Logger.info("Service: installed systemd unit at #{@systemd_unit_dest}")
+      Logger.info("Service: installed systemd unit at #{@systemd_unit_dest} (User=#{current_user}, HOME=#{home_dir})")
+      :ok
+    else
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp current_os_user do
+    case System.get_env("USER") do
+      nil ->
+        case System.cmd("whoami", [], stderr_to_stdout: true) do
+          {name, 0} -> {:ok, String.trim(name)}
+          _ -> {:error, :cannot_determine_user}
+        end
+
+      user ->
+        {:ok, user}
+    end
+  end
+
+  defp current_home_dir do
+    case System.user_home() do
+      nil -> {:error, :cannot_determine_home}
+      home -> {:ok, home}
+    end
+  end
+
+  defp inject_service_user(template, user, home_dir) do
+    template
+    |> then(fn t ->
+      if String.contains?(t, "\nUser=") do
+        Regex.replace(~r/\nUser=[^\n]*/, t, "\nUser=#{user}")
+      else
+        String.replace(t, "\n[Service]", "\n[Service]\nUser=#{user}")
+      end
+    end)
+    |> then(fn t ->
+      if String.contains?(t, "\nEnvironment=HOME=") do
+        Regex.replace(~r/\nEnvironment=HOME=[^\n]*/, t, "\nEnvironment=HOME=#{home_dir}")
+      else
+        String.replace(t, "\n[Service]", "\n[Service]\nEnvironment=HOME=#{home_dir}")
+      end
+    end)
+  end
+
+  defp write_service_file(content) do
+    tmp = System.tmp_dir!() |> Path.join("dust.service.tmp")
+
+    with :ok <- File.write(tmp, content),
+         :ok <- run_cmd("sudo", ["cp", tmp, @systemd_unit_dest]),
+         :ok <- run_cmd("sudo", ["chmod", "644", @systemd_unit_dest]) do
+      File.rm(tmp)
       :ok
     end
   end

@@ -80,8 +80,18 @@ defmodule Dust.CLI.Commands.Init do
           {200, {:ok, %{"status" => status}}} ->
             Formatter.success("Key store #{status}")
 
+          {401, {:ok, %{"error" => "invalid_password"}}} ->
+            Formatter.error("Wrong password — a key already exists at #{config.data_dir}/master.key")
+            Formatter.info("To start fresh, delete that file and run 'dustctl init' again.")
+            return_code(1)
+
+          {401, {:ok, %{"error" => "unauthorized"}}} ->
+            Formatter.error("API token invalid — cannot authenticate to the daemon")
+            Formatter.info("Check that #{config.data_dir}/api_token exists and is readable by your user.")
+            return_code(1)
+
           {401, _} ->
-            Formatter.error("Invalid password")
+            Formatter.error("Authentication failed (401)")
             return_code(1)
 
           other ->

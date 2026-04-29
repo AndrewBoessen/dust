@@ -19,6 +19,7 @@ defmodule Dust.Api.Handlers.StatusHandler do
       key_store: key_store_status(),
       disk: disk_status(),
       network: network,
+      persist_dir: Dust.Utilities.Config.persist_dir(),
       uptime_ms: :erlang.statistics(:wall_clock) |> elem(0),
       version: "0.1.1"
     }
