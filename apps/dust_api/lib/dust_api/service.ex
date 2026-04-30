@@ -193,13 +193,28 @@ defmodule Dust.Api.Service do
   defp install_launchd do
     source = template_path("macos/com.dust.daemon.plist")
     dest = launchd_plist_dest()
+    home_dir = System.user_home!()
+    log_dir = Path.join(home_dir, "Library/Logs/dust")
 
-    with :ok <- File.mkdir_p(Path.dirname(dest)),
-         :ok <- copy_file(source, dest),
+    with {:ok, template} <- File.read(source),
+         content = inject_launchd_paths(template, home_dir, log_dir),
+         :ok <- File.mkdir_p(Path.dirname(dest)),
+         :ok <- File.mkdir_p(log_dir),
+         :ok <- File.write(dest, content),
          :ok <- run_cmd("launchctl", ["load", dest]) do
       Logger.info("Service: installed launchd plist at #{dest}")
       :ok
     end
+  end
+
+  defp inject_launchd_paths(template, home_dir, log_dir) do
+    template
+    |> String.replace("/usr/local/var/log/dust/stdout.log", Path.join(log_dir, "stdout.log"))
+    |> String.replace("/usr/local/var/log/dust/stderr.log", Path.join(log_dir, "stderr.log"))
+    |> String.replace(
+      "<key>EnvironmentVariables</key>\n    <dict>",
+      "<key>EnvironmentVariables</key>\n    <dict>\n        <key>HOME</key>\n        <string>#{home_dir}</string>"
+    )
   end
 
   defp uninstall_launchd do

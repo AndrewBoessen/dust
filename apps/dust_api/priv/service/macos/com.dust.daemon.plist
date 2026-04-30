@@ -22,8 +22,6 @@
 
     <key>EnvironmentVariables</key>
     <dict>
-        <key>DUST_DATA_DIR</key>
-        <string>/Users/Shared/.dust</string>
         <key>RELEASE_NODE</key>
         <string>dust@127.0.0.1</string>
     </dict>
