@@ -15,8 +15,6 @@ RestartSec=5
 LimitNOFILE=65536
 
 # Environment
-Environment=HOME=/var/lib/dust
-Environment=DUST_DATA_DIR=/var/lib/dust
 Environment=RELEASE_NODE=dust@127.0.0.1
 
 [Install]

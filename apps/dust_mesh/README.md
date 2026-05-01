@@ -10,7 +10,7 @@ by adding `mesh` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:mesh, "~> 0.1.1"}
+    {:mesh, "~> 0.1.2"}
   ]
 end
 ```

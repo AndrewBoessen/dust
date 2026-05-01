@@ -5,7 +5,7 @@ defmodule Dust.MixProject do
     [
       apps_path: "apps",
       name: "Dust",
-      version: "0.1.1",
+      version: "0.1.2",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       releases: releases()

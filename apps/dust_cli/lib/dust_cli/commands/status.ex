@@ -26,7 +26,7 @@ defmodule Dust.CLI.Commands.Status do
 
     Formatter.kv_box("Node Status", [
       {"Node", status["node"]},
-      {"Version", status["version"] || "0.1.1"},
+      {"Version", status["version"] || "0.1.2"},
       {"Status", ready},
       {"Key Store", key_store},
       {"Tailscale", net_status},

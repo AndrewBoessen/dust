@@ -96,10 +96,65 @@ defmodule Dust.Api.Service do
   defp install_systemd do
     source = template_path("linux/dust.service")
 
-    with :ok <- run_cmd("sudo", ["cp", source, @systemd_unit_dest]),
+    with {:ok, template} <- File.read(source),
+         {:ok, current_user} <- current_os_user(),
+         {:ok, home_dir} <- current_home_dir(),
+         content = inject_service_user(template, current_user, home_dir),
+         :ok <- write_service_file(content),
          :ok <- run_cmd("sudo", ["systemctl", "daemon-reload"]),
          :ok <- run_cmd("sudo", ["systemctl", "enable", "dust"]) do
-      Logger.info("Service: installed systemd unit at #{@systemd_unit_dest}")
+      Logger.info("Service: installed systemd unit at #{@systemd_unit_dest} (User=#{current_user}, HOME=#{home_dir})")
+      :ok
+    else
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp current_os_user do
+    case System.get_env("USER") do
+      nil ->
+        case System.cmd("whoami", [], stderr_to_stdout: true) do
+          {name, 0} -> {:ok, String.trim(name)}
+          _ -> {:error, :cannot_determine_user}
+        end
+
+      user ->
+        {:ok, user}
+    end
+  end
+
+  defp current_home_dir do
+    case System.user_home() do
+      nil -> {:error, :cannot_determine_home}
+      home -> {:ok, home}
+    end
+  end
+
+  defp inject_service_user(template, user, home_dir) do
+    template
+    |> then(fn t ->
+      if String.contains?(t, "\nUser=") do
+        Regex.replace(~r/\nUser=[^\n]*/, t, "\nUser=#{user}")
+      else
+        String.replace(t, "\n[Service]", "\n[Service]\nUser=#{user}")
+      end
+    end)
+    |> then(fn t ->
+      if String.contains?(t, "\nEnvironment=HOME=") do
+        Regex.replace(~r/\nEnvironment=HOME=[^\n]*/, t, "\nEnvironment=HOME=#{home_dir}")
+      else
+        String.replace(t, "\n[Service]", "\n[Service]\nEnvironment=HOME=#{home_dir}")
+      end
+    end)
+  end
+
+  defp write_service_file(content) do
+    tmp = System.tmp_dir!() |> Path.join("dust.service.tmp")
+
+    with :ok <- File.write(tmp, content),
+         :ok <- run_cmd("sudo", ["cp", tmp, @systemd_unit_dest]),
+         :ok <- run_cmd("sudo", ["chmod", "644", @systemd_unit_dest]) do
+      File.rm(tmp)
       :ok
     end
   end
@@ -138,13 +193,28 @@ defmodule Dust.Api.Service do
   defp install_launchd do
     source = template_path("macos/com.dust.daemon.plist")
     dest = launchd_plist_dest()
+    home_dir = System.user_home!()
+    log_dir = Path.join(home_dir, "Library/Logs/dust")
 
-    with :ok <- File.mkdir_p(Path.dirname(dest)),
-         :ok <- copy_file(source, dest),
+    with {:ok, template} <- File.read(source),
+         content = inject_launchd_paths(template, home_dir, log_dir),
+         :ok <- File.mkdir_p(Path.dirname(dest)),
+         :ok <- File.mkdir_p(log_dir),
+         :ok <- File.write(dest, content),
          :ok <- run_cmd("launchctl", ["load", dest]) do
       Logger.info("Service: installed launchd plist at #{dest}")
       :ok
     end
+  end
+
+  defp inject_launchd_paths(template, home_dir, log_dir) do
+    template
+    |> String.replace("/usr/local/var/log/dust/stdout.log", Path.join(log_dir, "stdout.log"))
+    |> String.replace("/usr/local/var/log/dust/stderr.log", Path.join(log_dir, "stderr.log"))
+    |> String.replace(
+      "<key>EnvironmentVariables</key>\n    <dict>",
+      "<key>EnvironmentVariables</key>\n    <dict>\n        <key>HOME</key>\n        <string>#{home_dir}</string>"
+    )
   end
 
   defp uninstall_launchd do
