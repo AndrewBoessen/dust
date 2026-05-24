@@ -212,24 +212,6 @@ defmodule Dust.CLI do
   end
 
   defp print_help do
-    IO.puts("")
-
-    Owl.Box.new(
-      [
-        Owl.Data.tag("dustctl", [:bright, :cyan]),
-        Owl.Data.tag("  v#{@version}", :faint),
-        "\n",
-        Owl.Data.tag("Distributed file system CLI", :faint)
-      ],
-      border_style: :solid_rounded,
-      padding_x: 2,
-      padding_y: 1,
-      horizontal_align: :left
-    )
-    |> Owl.IO.puts()
-
-    IO.puts("")
-
     groups = [
       {"Setup", [
         {"init", "First-time setup wizard"},
@@ -272,45 +254,54 @@ defmodule Dust.CLI do
       {"Garbage Collection", [
         {"gc stats", "Show garbage collection statistics"},
         {"gc sweep", "Trigger a manual GC sweep"}
+      ]},
+      {"Other", [
+        {"help", "Show this help message"},
+        {"version", "Show version"}
       ]}
     ]
 
-    Enum.each(groups, fn {group_name, commands} ->
-      Owl.IO.puts(["  ", Owl.Data.tag(group_name, :bright)])
-      IO.puts("")
-
-      rows =
-        Enum.map(commands, fn {cmd, desc} ->
-          %{"Command" => Owl.Data.tag(cmd, :cyan), "Description" => desc}
-        end)
-
-      Owl.Table.new(rows,
-        border_style: :solid_rounded,
-        padding_x: 1,
-        sort_columns: fn col_a, _col_b -> col_a == "Command" end
-      )
-      |> Owl.IO.puts()
-
-      IO.puts("")
-    end)
-
-    Owl.IO.puts(["  ", Owl.Data.tag("Global Options", :bright)])
-    IO.puts("")
-
-    options_rows = [
-      %{"Option" => Owl.Data.tag("--host HOST", :cyan), "Description" => "Daemon host (default: 127.0.0.1)"},
-      %{"Option" => Owl.Data.tag("--port PORT", :cyan), "Description" => "Daemon port (default: 4884)"},
-      %{"Option" => Owl.Data.tag("--token TOKEN", :cyan), "Description" => "API bearer token (default: read from data dir)"},
-      %{"Option" => Owl.Data.tag("--data-dir DIR", :cyan), "Description" => "Data directory (default: ~/.dust)"},
+    options = [
+      {"--host HOST", "Daemon host (default: 127.0.0.1)"},
+      {"--port PORT", "Daemon port (default: 4884)"},
+      {"--token TOKEN", "API bearer token (default: read from data dir)"},
+      {"--data-dir DIR", "Data directory (default: ~/.dust)"}
     ]
 
-    Owl.Table.new(options_rows,
-      border_style: :solid_rounded,
-      padding_x: 1,
-      sort_columns: fn col_a, _col_b -> col_a == "Option" end
-    )
-    |> Owl.IO.puts()
+    all_items =
+      Enum.flat_map(groups, fn {_, cmds} -> cmds end) ++ options
 
+    col_width =
+      all_items
+      |> Enum.map(fn {name, _} -> String.length(name) end)
+      |> Enum.max()
+      |> Kernel.+(4)
+
+    IO.puts("dustctl #{@version} - Distributed file system CLI")
+    IO.puts("")
+    IO.puts("Usage: dustctl [global options] <command> [arguments]")
+    IO.puts("")
+    IO.puts("Commands:")
+
+    Enum.each(groups, fn {group_name, commands} ->
+      IO.puts("")
+      IO.puts("  #{group_name}:")
+
+      Enum.each(commands, fn {cmd, desc} ->
+        IO.puts("    #{String.pad_trailing(cmd, col_width)}#{desc}")
+      end)
+    end)
+
+    IO.puts("")
+    IO.puts("Global Options:")
+    IO.puts("")
+
+    Enum.each(options, fn {opt, desc} ->
+      IO.puts("  #{String.pad_trailing(opt, col_width + 2)}#{desc}")
+    end)
+
+    IO.puts("")
+    IO.puts("Run 'dustctl help' to show this message.")
     IO.puts("")
     0
   end

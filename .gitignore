@@ -24,6 +24,7 @@ erl_crash.dump
 
 # Go sidecar compiled binary
 apps/dust_bridge/native/tsnet_sidecar/tsnet_sidecar
+tsnet_sidecar
 tsnet-state*
 
 # Dev persist directory
@@ -31,3 +32,8 @@ tsnet-state*
 
 # CLI binary
 dustctl_*
+
+# nix env
+.hex
+.mix
+shell.nix
