@@ -49,16 +49,16 @@ sudo cp -r dust /opt/dust
 /opt/dust/bin/dust start
 ```
 
-To install as a systemd service for automatic startup:
+With the daemon running, install it as a systemd service so it starts on
+boot:
 
 ```bash
-# Copy the service file
-sudo cp /opt/dust/service/linux/dust.service /etc/systemd/system/
-
-# Enable and start
-sudo systemctl daemon-reload
-sudo systemctl enable --now dust
+dustctl daemon install
 ```
+
+`dustctl daemon install` writes a unit to `/etc/systemd/system/dust.service`
+(via `sudo`), runs `systemctl daemon-reload`, and enables `dust`. To
+remove it later, run `dustctl daemon uninstall`.
 
 #### macOS
 
@@ -74,12 +74,48 @@ sudo mv dust/bin/dust /usr/local/bin/
 dust start
 ```
 
-To install as a launchd service:
+To install as a launchd agent so it starts on login:
 
 ```bash
-cp dust/service/macos/com.dust.daemon.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.dust.daemon.plist
+dustctl daemon install
 ```
+
+This writes `~/Library/LaunchAgents/com.dust.daemon.plist` and loads it
+via `launchctl`. To remove it, run `dustctl daemon uninstall`.
+
+#### NixOS
+
+Dust ships a Nix flake. The release tarballs **do not work** on NixOS
+(dynamic linker paths and system libraries are managed by Nix), so use
+the flake's NixOS module instead. Add to your system flake:
+
+```nix
+{
+  inputs.dust.url = "github:AndrewBoessen/dust";
+
+  outputs = { self, nixpkgs, dust, ... }: {
+    nixosConfigurations.example = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        dust.nixosModules.default
+        ({ ... }: {
+          nixpkgs.overlays = [ dust.overlays.default ];
+          services.dust.enable = true;
+        })
+      ];
+    };
+  };
+}
+```
+
+Then `sudo nixos-rebuild switch`. The module creates a `dust` user,
+provisions `/var/lib/dust` and `/var/log/dust`, and registers a systemd
+unit that starts on boot. See [Configuration → NixOS](#nixos) below for
+the full list of `services.dust.*` options.
+
+`dustctl daemon install` / `uninstall` are inert on NixOS — they exit
+non-zero with a pointer back to this section, because service config is
+managed declaratively here, not by writing to `/etc/systemd/system/`.
 
 #### Windows
 
@@ -92,15 +128,23 @@ launchctl load ~/Library/LaunchAgents/com.dust.daemon.plist
 dust start
 ```
 
-To install as a Windows service, download [WinSW](https://github.com/winsw/winsw) and place `winsw.exe` alongside `dust\service\windows\dust-service.xml` in your install directory:
+To install as a Windows service, you need the [WinSW](https://github.com/winsw/winsw)
+wrapper. Drop it into `%LOCALAPPDATA%\Dust\` renamed as `dust-service.exe`,
+then let `dustctl` handle the rest:
 
 ```powershell
-# Copy the service XML and rename winsw to match
-Copy-Item "C:\Program Files\Dust\service\windows\dust-service.xml" "C:\Program Files\Dust\"
-Rename-Item winsw.exe dust-service.exe
-dust-service.exe install
-dust-service.exe start
+# One-time: place the WinSW wrapper where dustctl expects it
+New-Item -ItemType Directory -Force -Path "$env:LOCALAPPDATA\Dust" | Out-Null
+Copy-Item winsw.exe "$env:LOCALAPPDATA\Dust\dust-service.exe"
+
+# Register and start the service
+dustctl daemon install
+dustctl daemon start
 ```
+
+`dustctl daemon install` copies the bundled `dust-service.xml` next to
+`dust-service.exe` and calls `dust-service.exe install`. To remove it,
+run `dustctl daemon uninstall`.
 
 ---
 
@@ -142,6 +186,22 @@ xattr -d com.apple.quarantine /usr/local/bin/dustctl
 ```
 
 For Intel Macs, replace `dustctl_macos_aarch64` with `dustctl_macos_x86_64`.
+
+#### NixOS
+
+The CLI is also exposed by the flake:
+
+```bash
+# Run without installing
+nix run github:AndrewBoessen/dust#dustctl -- status
+
+# Or install system-wide through the overlay
+nixpkgs.overlays = [ inputs.dust.overlays.default ];
+environment.systemPackages = [ pkgs.dustctl ];
+```
+
+The Nix package builds a plain mix release (no burrito), so the executable
+lives at `${pkgs.dustctl}/bin/dustctl`.
 
 #### Windows
 
@@ -372,6 +432,48 @@ See the [Getting Started](#getting-started) section for how to use the auth key 
 | `DUST_DATA_DIR` | No       | `~/.dust`   | Root directory for all persistent data. |
 | `DUST_API_PORT` | No       | `4884`      | TCP port for the local HTTP API.        |
 | `DUST_API_BIND` | No       | `127.0.0.1` | IP address the HTTP API binds to.       |
+
+### NixOS
+
+The flake's NixOS module (`dust.nixosModules.default`) exposes the daemon
+under `services.dust`. Common options:
+
+| Option                          | Default              | Description                                                              |
+| ------------------------------- | -------------------- | ------------------------------------------------------------------------ |
+| `services.dust.enable`          | `false`              | Enable the daemon as a systemd service.                                  |
+| `services.dust.package`         | `pkgs.dust`          | Package to run (typically from the flake's `overlays.default`).          |
+| `services.dust.user`            | `"dust"`             | System user the daemon runs as.                                          |
+| `services.dust.group`           | `"dust"`             | System group the daemon runs as.                                         |
+| `services.dust.dataDir`         | `/var/lib/dust`      | Persistent state directory (sets `DUST_DATA_DIR` and `HOME`).            |
+| `services.dust.logDir`          | `/var/log/dust`      | Log directory.                                                           |
+| `services.dust.apiBind`         | `"127.0.0.1"`        | API bind address (`DUST_API_BIND`).                                      |
+| `services.dust.apiPort`         | `4884`               | API TCP port (`DUST_API_PORT`).                                          |
+| `services.dust.nodeName`        | `"dust@127.0.0.1"`   | `RELEASE_NODE` for the BEAM node.                                        |
+| `services.dust.cookieFile`      | `null`               | Path to a file with the Erlang distribution cookie (kept outside the Nix store). |
+| `services.dust.environmentFile` | `null`               | systemd `EnvironmentFile=` for secrets (e.g. `TS_AUTHKEY`).              |
+| `services.dust.openFirewall`    | `false`              | Open `apiPort` in the firewall. Off by default — Dust expects API traffic over loopback or Tailscale. |
+| `services.dust.extraEnvironment`| `{ }`                | Extra env vars on the unit (e.g. `{ TS_TAGS = "tag:dust-node"; }`).      |
+
+Example with secrets in a sops-nix file:
+
+```nix
+{
+  services.dust = {
+    enable = true;
+    cookieFile = config.sops.secrets."dust/cookie".path;
+    environmentFile = config.sops.secrets."dust/env".path;
+    extraEnvironment = {
+      TS_HOSTNAME = "dust-node-${config.networking.hostName}";
+      TS_TAGS = "tag:dust-node";
+    };
+  };
+}
+```
+
+`dustctl` invocations like `dustctl daemon install` / `uninstall` /
+`start` / `stop` are short-circuited on NixOS — the module owns the
+unit, so the CLI returns a `nixos_managed` error instead of trying to
+write to `/etc/systemd/system/`.
 
 ## Security
 

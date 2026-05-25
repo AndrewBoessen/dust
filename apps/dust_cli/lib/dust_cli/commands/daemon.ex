@@ -92,6 +92,10 @@ defmodule Dust.CLI.Commands.Daemon do
         Formatter.success("Service installed. It will start automatically on next reboot.")
         0
 
+      {_status, {:ok, %{"error" => "nixos_managed"}}} ->
+        print_nixos_managed()
+        1
+
       {_status, {:ok, %{"error" => reason}}} ->
         Formatter.error("Install failed: #{reason}")
         1
@@ -109,6 +113,10 @@ defmodule Dust.CLI.Commands.Daemon do
       {200, _} ->
         Formatter.success("Service removed.")
         0
+
+      {_status, {:ok, %{"error" => "nixos_managed"}}} ->
+        print_nixos_managed()
+        1
 
       {_status, {:ok, %{"error" => reason}}} ->
         Formatter.error("Uninstall failed: #{reason}")
@@ -149,5 +157,24 @@ defmodule Dust.CLI.Commands.Daemon do
       :ok -> :ok
       :error -> wait_ready(config, retries - 1)
     end
+  end
+
+  defp print_nixos_managed do
+    Formatter.error("Dust is managed declaratively on NixOS.")
+    IO.puts("")
+    IO.puts("  Add the following to your NixOS configuration:")
+    IO.puts("")
+    Owl.IO.puts(["    ", Owl.Data.tag("services.dust.enable = true;", :bright)])
+    IO.puts("")
+    IO.puts("  Using the flake module:")
+    IO.puts("")
+
+    Owl.IO.puts([
+      "    ",
+      Owl.Data.tag("imports = [ inputs.dust.nixosModules.default ];", :bright)
+    ])
+
+    IO.puts("")
+    IO.puts("  See README.md#nixos for full instructions.")
   end
 end
