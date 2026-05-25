@@ -1,5 +1,5 @@
---- a/apps/dust_cli/mix.exs	2026-05-25 11:05:40.632083802 -0500
-+++ b/apps/dust_cli/mix.exs	2026-05-25 11:07:33.614267129 -0500
+--- a/apps/dust_cli/mix.exs
++++ b/apps/dust_cli/mix.exs
 @@ -26,7 +26,6 @@
    defp deps do
      [
@@ -27,3 +27,23 @@
        ]
      ]
    end
+--- a/apps/dust_cli/lib/dust_cli/application.ex
++++ b/apps/dust_cli/lib/dust_cli/application.ex
+@@ -3,13 +3,12 @@
+   use Application
+
+   def start(_, _) do
+-    case Burrito.Util.Args.get_bin_path() do
+-      :not_in_burrito ->
+-        # Running under mix test or mix run — do not execute the CLI
++    case System.get_env("DUSTCTL_ARGV") do
++      nil ->
+         Supervisor.start_link([], strategy: :one_for_one)
+
+-      _bin_path ->
+-        args = Burrito.Util.Args.argv()
++      raw ->
++        args = String.split(raw, "\n", trim: true)
+         exit_code = Dust.CLI.run(args)
+         System.halt(exit_code)
+     end

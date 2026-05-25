@@ -76,12 +76,28 @@ beamPackages.mixRelease {
     runHook postInstall
   '';
 
-  # Wrap the launcher so users invoke it as `dustctl`. The mix release
-  # places its launcher at `bin/dustctl` — we just expose it.
+  # Without Burrito, the mix release has no way to receive CLI argv at
+  # boot — `bin/dustctl start` just starts the BEAM. The patch under
+  # `nix/patches/` rewires `Dust.CLI.Application.start/2` to read argv
+  # from the `DUSTCTL_ARGV` env var (newline-separated). Wrap the
+  # generated launcher in a small script that packs $@ into that var,
+  # then invokes the underlying release in foreground mode.
   postInstall = ''
-    if [ ! -e $out/bin/dustctl ]; then
-      ln -s $out/bin/${pname} $out/bin/dustctl || true
-    fi
+    mv "$out/bin/dustctl" "$out/bin/.dustctl-release"
+
+    cat > "$out/bin/dustctl" <<'WRAPPER'
+    #!/usr/bin/env bash
+    set -e
+    ARGV=""
+    for arg in "$@"; do
+      ARGV+="$arg"$'\n'
+    done
+    export DUSTCTL_ARGV="$ARGV"
+    export RELEASE_NAME=dustctl
+    exec "$(dirname "$0")/.dustctl-release" start
+    WRAPPER
+
+    chmod +x "$out/bin/dustctl"
   '';
 
   meta = with lib; {
