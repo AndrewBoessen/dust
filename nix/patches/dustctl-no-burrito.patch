@@ -1,7 +1,6 @@
-diff --git a/apps/dust_cli/mix.exs b/apps/dust_cli/mix.exs
---- a/apps/dust_cli/mix.exs
-+++ b/apps/dust_cli/mix.exs
-@@ -25,7 +25,6 @@ defmodule Dust.Cli.MixProject do
+--- a/apps/dust_cli/mix.exs	2026-05-25 11:05:40.632083802 -0500
++++ b/apps/dust_cli/mix.exs	2026-05-25 11:07:33.614267129 -0500
+@@ -26,7 +26,6 @@
    defp deps do
      [
        {:jason, "~> 1.4"},
@@ -9,7 +8,7 @@ diff --git a/apps/dust_cli/mix.exs b/apps/dust_cli/mix.exs
        {:owl, "~> 0.12"},
        {:websockex, "~> 0.4.3"}
      ]
-@@ -34,17 +33,7 @@ defmodule Dust.Cli.MixProject do
+@@ -35,16 +34,8 @@
    defp releases do
      [
        dustctl: [
@@ -23,7 +22,8 @@ diff --git a/apps/dust_cli/mix.exs b/apps/dust_cli/mix.exs
 -            windows_x86_64: [os: :windows, cpu: :x86_64]
 -          ]
 -        ]
-+        steps: [:assemble]
++        steps: [:assemble],
++        applications: [dust_cli: :permanent]
        ]
      ]
    end

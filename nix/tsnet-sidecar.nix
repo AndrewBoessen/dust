@@ -17,7 +17,7 @@ buildGoModule {
   src = ../apps/dust_bridge/native/tsnet_sidecar;
 
   # Replace with the hash printed by `nix build` on first run.
-  vendorHash = lib.fakeHash;
+  vendorHash = "sha256-iOTgl8BZkLYqSa/Dm4QSDMGSaOMXtnmJ8TbmN6GyFfw=";
 
   # tsnet doesn't need CGO; matches the Windows build instruction in README.
   env.CGO_ENABLED = "0";
