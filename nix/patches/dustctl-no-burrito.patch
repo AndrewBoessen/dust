@@ -1,0 +1,29 @@
+diff --git a/apps/dust_cli/mix.exs b/apps/dust_cli/mix.exs
+--- a/apps/dust_cli/mix.exs
++++ b/apps/dust_cli/mix.exs
+@@ -25,7 +25,6 @@ defmodule Dust.Cli.MixProject do
+   defp deps do
+     [
+       {:jason, "~> 1.4"},
+-      {:burrito, "~> 1.0"},
+       {:owl, "~> 0.12"},
+       {:websockex, "~> 0.4.3"}
+     ]
+@@ -34,17 +33,7 @@ defmodule Dust.Cli.MixProject do
+   defp releases do
+     [
+       dustctl: [
+-        steps: [:assemble, &Burrito.wrap/1],
+-        burrito: [
+-          targets: [
+-            linux_x86_64:   [os: :linux,   cpu: :x86_64],
+-            linux_aarch64:  [os: :linux,   cpu: :aarch64],
+-            macos_x86_64:   [os: :darwin,  cpu: :x86_64],
+-            macos_aarch64:  [os: :darwin,  cpu: :aarch64],
+-            windows_x86_64: [os: :windows, cpu: :x86_64]
+-          ]
+-        ]
++        steps: [:assemble]
+       ]
+     ]
+   end

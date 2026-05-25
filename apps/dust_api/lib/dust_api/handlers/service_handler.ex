@@ -17,7 +17,7 @@ defmodule Dust.Api.Handlers.ServiceHandler do
         json_response(conn, 200, %{ok: true})
 
       {:error, reason} ->
-        json_response(conn, 500, %{error: inspect(reason)})
+        json_response(conn, error_status(reason), %{error: format_reason(reason)})
     end
   end
 
@@ -27,7 +27,7 @@ defmodule Dust.Api.Handlers.ServiceHandler do
         json_response(conn, 200, %{ok: true})
 
       {:error, reason} ->
-        json_response(conn, 500, %{error: inspect(reason)})
+        json_response(conn, error_status(reason), %{error: format_reason(reason)})
     end
   end
 
@@ -42,7 +42,7 @@ defmodule Dust.Api.Handlers.ServiceHandler do
         json_response(conn, 200, %{ok: true})
 
       {:error, reason} ->
-        json_response(conn, 500, %{error: inspect(reason)})
+        json_response(conn, error_status(reason), %{error: format_reason(reason)})
     end
   end
 
@@ -52,7 +52,7 @@ defmodule Dust.Api.Handlers.ServiceHandler do
         json_response(conn, 200, %{ok: true})
 
       {:error, reason} ->
-        json_response(conn, 500, %{error: inspect(reason)})
+        json_response(conn, error_status(reason), %{error: format_reason(reason)})
     end
   end
 
@@ -61,4 +61,12 @@ defmodule Dust.Api.Handlers.ServiceHandler do
     |> put_resp_content_type("application/json")
     |> send_resp(status, Jason.encode!(body))
   end
+
+  defp format_reason(reason) when is_atom(reason), do: Atom.to_string(reason)
+  defp format_reason(reason), do: inspect(reason)
+
+  # 409 Conflict for "the caller's environment refuses this op declaratively"
+  # so a NixOS user sees a distinct status code from a real failure.
+  defp error_status(:nixos_managed), do: 409
+  defp error_status(_), do: 500
 end

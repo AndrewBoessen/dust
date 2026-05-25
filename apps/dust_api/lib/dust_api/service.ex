@@ -29,11 +29,15 @@ defmodule Dust.Api.Service do
   """
   @spec install() :: :ok | {:error, term()}
   def install do
-    case :os.type() do
-      {:unix, :linux} -> install_systemd()
-      {:unix, :darwin} -> install_launchd()
-      {:win32, _} -> install_winsw()
-      other -> {:error, {:unsupported_os, other}}
+    cond do
+      nixos?() -> {:error, :nixos_managed}
+      true ->
+        case :os.type() do
+          {:unix, :linux} -> install_systemd()
+          {:unix, :darwin} -> install_launchd()
+          {:win32, _} -> install_winsw()
+          other -> {:error, {:unsupported_os, other}}
+        end
     end
   end
 
@@ -42,11 +46,15 @@ defmodule Dust.Api.Service do
   """
   @spec uninstall() :: :ok | {:error, term()}
   def uninstall do
-    case :os.type() do
-      {:unix, :linux} -> uninstall_systemd()
-      {:unix, :darwin} -> uninstall_launchd()
-      {:win32, _} -> uninstall_winsw()
-      other -> {:error, {:unsupported_os, other}}
+    cond do
+      nixos?() -> {:error, :nixos_managed}
+      true ->
+        case :os.type() do
+          {:unix, :linux} -> uninstall_systemd()
+          {:unix, :darwin} -> uninstall_launchd()
+          {:win32, _} -> uninstall_winsw()
+          other -> {:error, {:unsupported_os, other}}
+        end
     end
   end
 
@@ -68,11 +76,15 @@ defmodule Dust.Api.Service do
   """
   @spec start() :: :ok | {:error, term()}
   def start do
-    case :os.type() do
-      {:unix, :linux} -> run_cmd("systemctl", ["start", "dust"])
-      {:unix, :darwin} -> run_cmd("launchctl", ["load", launchd_plist_dest()])
-      {:win32, _} -> run_cmd("net", ["start", "dust"])
-      other -> {:error, {:unsupported_os, other}}
+    cond do
+      nixos?() -> {:error, :nixos_managed}
+      true ->
+        case :os.type() do
+          {:unix, :linux} -> run_cmd("systemctl", ["start", "dust"])
+          {:unix, :darwin} -> run_cmd("launchctl", ["load", launchd_plist_dest()])
+          {:win32, _} -> run_cmd("net", ["start", "dust"])
+          other -> {:error, {:unsupported_os, other}}
+        end
     end
   end
 
@@ -81,12 +93,28 @@ defmodule Dust.Api.Service do
   """
   @spec stop() :: :ok | {:error, term()}
   def stop do
-    case :os.type() do
-      {:unix, :linux} -> run_cmd("systemctl", ["stop", "dust"])
-      {:unix, :darwin} -> run_cmd("launchctl", ["unload", launchd_plist_dest()])
-      {:win32, _} -> run_cmd("net", ["stop", "dust"])
-      other -> {:error, {:unsupported_os, other}}
+    cond do
+      nixos?() -> {:error, :nixos_managed}
+      true ->
+        case :os.type() do
+          {:unix, :linux} -> run_cmd("systemctl", ["stop", "dust"])
+          {:unix, :darwin} -> run_cmd("launchctl", ["unload", launchd_plist_dest()])
+          {:win32, _} -> run_cmd("net", ["stop", "dust"])
+          other -> {:error, {:unsupported_os, other}}
+        end
     end
+  end
+
+  # ── NixOS detection ────────────────────────────────────────────────────
+
+  # NixOS manages services declaratively via its module system. Writing to
+  # /etc/systemd/system on NixOS does not survive `nixos-rebuild switch`,
+  # so we refuse and surface a clear error that the CLI renders into
+  # module-enable instructions.
+  defp nixos? do
+    File.exists?("/etc/NIXOS") or
+      (File.exists?("/etc/os-release") and
+         File.read!("/etc/os-release") =~ ~r/^ID=nixos$/m)
   end
 
   # ── Linux (systemd) ────────────────────────────────────────────────────
