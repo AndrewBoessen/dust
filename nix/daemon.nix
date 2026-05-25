@@ -70,14 +70,15 @@ let
   };
 
   # Vendor the Cargo deps for the two Rust NIFs. Both lockfiles live
-  # under deps/ after `mix deps.get`, but we have copies in the project's
-  # checked-in deps directory used at build time.
+  # under deps/ inside `mixFodDeps`. Reading them through the FOD output
+  # is IFD, but it means we don't need to commit copies of the lockfiles
+  # into the repo — the hex-fetched sources are the source of truth.
   rsSimdCargoVendor = rustPlatform.importCargoLock {
-    lockFile = ../deps/rs_simd/native/rs_simd_nif/Cargo.lock;
+    lockFile = "${mixFodDeps}/rs_simd/native/rs_simd_nif/Cargo.lock";
   };
 
   diskSpaceCargoVendor = rustPlatform.importCargoLock {
-    lockFile = ../deps/disk_space/Cargo.lock;
+    lockFile = "${mixFodDeps}/disk_space/Cargo.lock";
   };
 in
 beamPackages.mixRelease {
