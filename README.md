@@ -49,16 +49,16 @@ sudo cp -r dust /opt/dust
 /opt/dust/bin/dust start
 ```
 
-To install as a systemd service for automatic startup:
+With the daemon running, install it as a systemd service so it starts on
+boot:
 
 ```bash
-# Copy the service file
-sudo cp /opt/dust/service/linux/dust.service /etc/systemd/system/
-
-# Enable and start
-sudo systemctl daemon-reload
-sudo systemctl enable --now dust
+dustctl daemon install
 ```
+
+`dustctl daemon install` writes a unit to `/etc/systemd/system/dust.service`
+(via `sudo`), runs `systemctl daemon-reload`, and enables `dust`. To
+remove it later, run `dustctl daemon uninstall`.
 
 #### macOS
 
@@ -74,12 +74,14 @@ sudo mv dust/bin/dust /usr/local/bin/
 dust start
 ```
 
-To install as a launchd service:
+To install as a launchd agent so it starts on login:
 
 ```bash
-cp dust/service/macos/com.dust.daemon.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.dust.daemon.plist
+dustctl daemon install
 ```
+
+This writes `~/Library/LaunchAgents/com.dust.daemon.plist` and loads it
+via `launchctl`. To remove it, run `dustctl daemon uninstall`.
 
 #### NixOS
 
@@ -126,15 +128,23 @@ managed declaratively here, not by writing to `/etc/systemd/system/`.
 dust start
 ```
 
-To install as a Windows service, download [WinSW](https://github.com/winsw/winsw) and place `winsw.exe` alongside `dust\service\windows\dust-service.xml` in your install directory:
+To install as a Windows service, you need the [WinSW](https://github.com/winsw/winsw)
+wrapper. Drop it into `%LOCALAPPDATA%\Dust\` renamed as `dust-service.exe`,
+then let `dustctl` handle the rest:
 
 ```powershell
-# Copy the service XML and rename winsw to match
-Copy-Item "C:\Program Files\Dust\service\windows\dust-service.xml" "C:\Program Files\Dust\"
-Rename-Item winsw.exe dust-service.exe
-dust-service.exe install
-dust-service.exe start
+# One-time: place the WinSW wrapper where dustctl expects it
+New-Item -ItemType Directory -Force -Path "$env:LOCALAPPDATA\Dust" | Out-Null
+Copy-Item winsw.exe "$env:LOCALAPPDATA\Dust\dust-service.exe"
+
+# Register and start the service
+dustctl daemon install
+dustctl daemon start
 ```
+
+`dustctl daemon install` copies the bundled `dust-service.xml` next to
+`dust-service.exe` and calls `dust-service.exe install`. To remove it,
+run `dustctl daemon uninstall`.
 
 ---
 
