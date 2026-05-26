@@ -101,6 +101,7 @@ in
 
     systemd.tmpfiles.rules = [
       "d '${cfg.dataDir}' 0750 ${cfg.user} ${cfg.group} - -"
+      "d '${cfg.dataDir}/tmp' 0750 ${cfg.user} ${cfg.group} - -"
       "d '${cfg.logDir}'  0750 ${cfg.user} ${cfg.group} - -"
     ];
 

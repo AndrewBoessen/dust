@@ -85,6 +85,98 @@ defmodule Dust.CLI.Client do
     end
   end
 
+  @doc """
+  Stream a local file as the body of a POST request.
+
+  Sends `Content-Type: application/octet-stream` with `extra_headers`
+  appended after the bearer-auth header. The file is read with the
+  CLI's own permissions in 4 MB chunks; `:httpc`'s built-in chunkifier
+  encodes them as HTTP/1.1 `Transfer-Encoding: chunked`, so memory use
+  stays bounded regardless of file size.
+
+  `progress_fn` is invoked with the byte count of each chunk as it's
+  queued for the wire. Defaults to a no-op. Sums to the file size.
+
+  Returns `{status, decoded_body}` on a completed response, or
+  `{:error, reason}` for transport failures.
+  """
+  @spec post_stream(
+          map(),
+          String.t(),
+          [{String.t(), String.t()}],
+          Path.t(),
+          (non_neg_integer() -> any())
+        ) ::
+          {non_neg_integer(), {:ok, term()} | {:error, term()}} | {:error, term()}
+  def post_stream(config, path, extra_headers, body_path, progress_fn \\ fn _ -> :ok end) do
+    url = "#{base_url(config)}#{path}"
+
+    headers =
+      auth_headers(config) ++
+        Enum.map(extra_headers, fn {k, v} ->
+          {to_charlist(k), to_charlist(v)}
+        end)
+
+    case File.open(body_path, [:read, :binary]) do
+      {:ok, file} ->
+        try do
+          chunkifier = build_chunkifier(progress_fn, body_path)
+
+          result =
+            :httpc.request(
+              :post,
+              {to_charlist(url), headers, ~c"application/octet-stream",
+               {chunkifier, file}},
+              http_opts(),
+              []
+            )
+
+          case result do
+            {:ok, {{_, status, _}, _h, body}} -> {status, decode_body(body)}
+            {:error, reason} -> {:error, reason}
+          end
+        after
+          File.close(file)
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Stream a GET response body straight to `dest_path` on disk.
+
+  Uses `:httpc`'s `[{:stream, path}]` option, so the CLI writes the
+  response with its own permissions — the daemon never opens a
+  user-side file. On 200 returns `{200, :saved_to_file}`; on non-200
+  the response is read into memory and returned as
+  `{status, decoded_body}` so callers can surface the error.
+  """
+  @spec get_to_file(map(), String.t(), Path.t()) ::
+          {non_neg_integer(), :saved_to_file | {:ok, term()} | {:error, term()}}
+          | {:error, term()}
+  def get_to_file(config, path, dest_path) do
+    url = "#{base_url(config)}#{path}"
+    headers = auth_headers(config)
+
+    case :httpc.request(
+           :get,
+           {to_charlist(url), headers},
+           http_opts(),
+           [{:stream, to_charlist(dest_path)}]
+         ) do
+      {:ok, :saved_to_file} ->
+        {200, :saved_to_file}
+
+      {:ok, {{_, status, _}, _h, body}} ->
+        {status, decode_body(body)}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   @doc "Check if the daemon is reachable."
   def ping(config) do
     case get(config, "/api/v1/status") do
@@ -95,7 +187,32 @@ defmodule Dust.CLI.Client do
     _ -> :error
   end
 
+  # 4 MB per body chunk — matches the daemon's `Packer` chunking on the
+  # ingest side, so on the local-only path the network buffer and the
+  # disk read-ahead align.
+  @stream_chunk_size 4 * 1024 * 1024
+
   # ── Private ────────────────────────────────────────────────────────────
+
+  # Builds the `{fun, acc}` body callback for `:httpc.request/4`.
+  # Each invocation reads the next chunk from the open file device and
+  # reports the chunk size as a delta to `progress_fn`. `path` is
+  # captured only for error reporting.
+  defp build_chunkifier(progress_fn, path) do
+    fn file ->
+      case IO.binread(file, @stream_chunk_size) do
+        :eof ->
+          :eof
+
+        data when is_binary(data) ->
+          _ = progress_fn.(byte_size(data))
+          {:ok, [data], file}
+
+        {:error, reason} ->
+          raise File.Error, reason: reason, action: "stream", path: path
+      end
+    end
+  end
 
   defp auth_headers(config) do
     case read_token(config) do

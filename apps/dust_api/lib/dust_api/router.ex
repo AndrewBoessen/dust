@@ -54,8 +54,8 @@ defmodule Dust.Api.Router do
     Dust.Api.Handlers.FsHandler.upload(conn)
   end
 
-  post "/api/v1/fs/download" do
-    Dust.Api.Handlers.FsHandler.download(conn)
+  get "/api/v1/fs/download/:file_id" do
+    Dust.Api.Handlers.FsHandler.download(conn, file_id)
   end
 
   post "/api/v1/fs/mv" do
