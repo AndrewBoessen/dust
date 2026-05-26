@@ -321,35 +321,11 @@ defmodule Dust.Daemon.FileSystem do
              | term()}
   def download(file_uuid, local_dest_path) do
     expanded_path = Path.expand(local_dest_path)
-
-    with {:ok, chunk_hashes, file_meta} <- Manifest.get_file(file_uuid),
-         {:ok, file_key} <- Crypto.decrypt_file_key(file_meta) do
-      all_locations = Manifest.get_all_shard_locations()
-      stream_chunks_to_file(file_uuid, chunk_hashes, file_key, expanded_path, all_locations)
-    end
-  end
-
-  # ── Chunk Streaming ────────────────────────────────────────────────────
-
-  defp stream_chunks_to_file(file_uuid, chunk_hashes, file_key, dest_path, all_locations) do
-    total_chunks = length(chunk_hashes)
-    file = File.open!(dest_path, [:write, :binary])
+    file = File.open!(expanded_path, [:write, :binary])
 
     try do
-      chunk_hashes
-      |> Enum.with_index()
-      |> Enum.reduce_while(:ok, fn {chunk_hash, idx}, :ok ->
-        case download_and_write_chunk(chunk_hash, file_key, file, all_locations) do
-          :ok ->
-            broadcast_download_progress(file_uuid, idx + 1, total_chunks)
-            {:cont, :ok}
-
-          {:error, _} = err ->
-            {:halt, err}
-        end
-      end)
-      |> case do
-        :ok -> {:ok, dest_path}
+      case download_stream(file_uuid, &IO.binwrite(file, &1)) do
+        :ok -> {:ok, expanded_path}
         {:error, _} = err -> err
       end
     after
@@ -357,7 +333,55 @@ defmodule Dust.Daemon.FileSystem do
     end
   end
 
-  defp download_and_write_chunk(chunk_hash, file_key, file, all_locations) do
+  @doc """
+  Streams a file out of the Dust network into a caller-supplied sink.
+
+  `write_fn` is invoked with the iodata for each decrypted chunk in order.
+  Use this when the bytes are bound for somewhere other than the local
+  filesystem — e.g. the HTTP API streams them straight into the response
+  body via `Plug.Conn.chunk/2`, so the daemon never has to write the file
+  under a path it might not have permission for.
+
+  `write_fn` should return `:ok` on success or `{:error, reason}` to abort
+  the stream. Errors are surfaced verbatim.
+  """
+  @spec download_stream(String.t(), (iodata() -> :ok | {:error, term()})) ::
+          :ok
+          | {:error,
+             :file_not_found
+             | :integrity_check_failed
+             | :insufficient_shards
+             | :chunk_meta_not_found
+             | :decode_failed
+             | term()}
+  def download_stream(file_uuid, write_fn) when is_function(write_fn, 1) do
+    with {:ok, chunk_hashes, file_meta} <- Manifest.get_file(file_uuid),
+         {:ok, file_key} <- Crypto.decrypt_file_key(file_meta) do
+      all_locations = Manifest.get_all_shard_locations()
+      stream_chunks(file_uuid, chunk_hashes, file_key, write_fn, all_locations)
+    end
+  end
+
+  # ── Chunk Streaming ────────────────────────────────────────────────────
+
+  defp stream_chunks(file_uuid, chunk_hashes, file_key, write_fn, all_locations) do
+    total_chunks = length(chunk_hashes)
+
+    chunk_hashes
+    |> Enum.with_index()
+    |> Enum.reduce_while(:ok, fn {chunk_hash, idx}, :ok ->
+      case download_and_write_chunk(chunk_hash, file_key, write_fn, all_locations) do
+        :ok ->
+          broadcast_download_progress(file_uuid, idx + 1, total_chunks)
+          {:cont, :ok}
+
+        {:error, _} = err ->
+          {:halt, err}
+      end
+    end)
+  end
+
+  defp download_and_write_chunk(chunk_hash, file_key, write_fn, all_locations) do
     k = Config.erasure_k()
     m = Config.erasure_m()
 
@@ -374,8 +398,14 @@ defmodule Dust.Daemon.FileSystem do
                    ErasureCoding.decode(shards, chunk_meta.size, k, m),
                  {:ok, plaintext} <-
                    Unpacker.unpack_chunk(encrypted_payload, chunk_meta, file_key) do
-              IO.binwrite(file, plaintext)
-              :ok
+              case write_fn.(plaintext) do
+                :ok -> :ok
+                {:error, _} = err -> err
+                # Some sinks (e.g. IO.binwrite/2 returning the device) return
+                # something other than :ok on success. Treat any non-error
+                # value as success.
+                _other -> :ok
+              end
             end
 
           {:error, _} = err ->

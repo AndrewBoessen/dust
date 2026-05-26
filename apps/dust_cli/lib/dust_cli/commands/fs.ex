@@ -267,25 +267,37 @@ defmodule Dust.CLI.Commands.Fs do
   defp do_upload(config, local_path, dir_id, file_name) do
     label = "#{file_name}  #{format_file_size(local_path)}"
 
-    ws =
-      case Progress.start(config, label, :upload) do
-        {:ok, pid} -> pid
-        _ ->
-          Formatter.info("Uploading #{label}...")
-          nil
+    # Client-side progress: the daemon used to broadcast `:upload_progress`
+    # over WebSockets as it processed chunks from the path, but with the
+    # streaming-body API the CLI is the one producing bytes, so we drive
+    # the bar locally. The daemon's server-side commit after the network
+    # transfer is fast enough that bytes-sent ≈ "done" from the user's
+    # perspective.
+    total_bytes =
+      case File.stat(local_path) do
+        {:ok, %File.Stat{size: size}} -> size
+        _ -> 0
+      end
+
+    progress_fn =
+      if total_bytes > 0 do
+        Owl.ProgressBar.start(id: :transfer, label: label, total: total_bytes)
+        fn delta -> Owl.ProgressBar.inc(id: :transfer, step: delta) end
+      else
+        Formatter.info("Uploading #{label}...")
+        fn _ -> :ok end
       end
 
     result =
-      Task.async(fn ->
-        Client.post(config, "/api/v1/fs/upload", %{
-          local_path: local_path,
-          dir_id: dir_id,
-          file_name: file_name
-        })
-      end)
-      |> Task.await(:infinity)
+      Client.post_stream(
+        config,
+        "/api/v1/fs/upload",
+        [{"X-Dust-Dir-Id", dir_id}, {"X-Dust-File-Name", file_name}],
+        local_path,
+        progress_fn
+      )
 
-    if ws, do: Progress.stop(ws)
+    if total_bytes > 0, do: Owl.LiveScreen.await_render()
 
     case result do
       {201, {:ok, %{"file_id" => file_id}}} ->
@@ -343,35 +355,37 @@ defmodule Dust.CLI.Commands.Fs do
   defp do_download(config, file_id, remote_path, dest_path) do
     label = "#{Path.basename(remote_path)} → #{dest_path}"
 
+    # The daemon still broadcasts `:download_progress` per chunk via WS as
+    # it streams the response, so we keep the WS-driven progress bar for
+    # downloads. The bytes are written to `dest_path` by :httpc itself
+    # (using its `{:stream, path}` option) with the CLI's own perms — the
+    # daemon never opens a file under the user's tree.
     ws =
       case Progress.start(config, label, :download) do
-        {:ok, pid} -> pid
+        {:ok, pid} ->
+          pid
+
         _ ->
           Formatter.info("Downloading #{label}...")
           nil
       end
 
-    result =
-      Task.async(fn ->
-        Client.post(config, "/api/v1/fs/download", %{
-          file_id: file_id,
-          dest_path: dest_path
-        })
-      end)
-      |> Task.await(:infinity)
+    result = Client.get_to_file(config, "/api/v1/fs/download/#{file_id}", dest_path)
 
     if ws, do: Progress.stop(ws)
 
     case result do
-      {200, {:ok, %{"path" => path}}} ->
-        Formatter.success("Downloaded to #{path}")
+      {200, :saved_to_file} ->
+        Formatter.success("Downloaded to #{dest_path}")
         0
 
       {_, {:ok, %{"error" => reason}}} ->
         Formatter.error("Download failed: #{reason}")
+        _ = File.rm(dest_path)
         1
 
       other ->
+        _ = File.rm(dest_path)
         Formatter.api_error(other)
     end
   end
