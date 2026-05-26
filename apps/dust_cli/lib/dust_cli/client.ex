@@ -111,36 +111,43 @@ defmodule Dust.CLI.Client do
   def post_stream(config, path, extra_headers, body_path, progress_fn \\ fn _ -> :ok end) do
     url = "#{base_url(config)}#{path}"
 
-    headers =
-      auth_headers(config) ++
-        Enum.map(extra_headers, fn {k, v} ->
-          {to_charlist(k), to_charlist(v)}
-        end)
+    # `:httpc` only emits `Transfer-Encoding: chunked` when you use the
+    # explicit `{:chunkify, fun, acc}` body form. The plain `{fun, acc}`
+    # form expects the caller to declare the size up front via
+    # `Content-Length`; without it httpc sends a body-less request that
+    # the server reads as zero bytes (Bandit then 400s the dangling
+    # socket — visible as the "unexpected :tcp data" warning in
+    # httpc_manager). We have the size locally, so set it.
+    with {:ok, %File.Stat{size: size}} <- File.stat(body_path),
+         {:ok, file} <- File.open(body_path, [:read, :binary]) do
+      headers =
+        auth_headers(config) ++
+          [{~c"content-length", to_charlist(Integer.to_string(size))}] ++
+          Enum.map(extra_headers, fn {k, v} ->
+            {to_charlist(k), to_charlist(v)}
+          end)
 
-    case File.open(body_path, [:read, :binary]) do
-      {:ok, file} ->
-        try do
-          chunkifier = build_chunkifier(progress_fn, body_path)
+      try do
+        chunkifier = build_chunkifier(progress_fn, body_path)
 
-          result =
-            :httpc.request(
-              :post,
-              {to_charlist(url), headers, ~c"application/octet-stream",
-               {chunkifier, file}},
-              http_opts(),
-              []
-            )
+        result =
+          :httpc.request(
+            :post,
+            {to_charlist(url), headers, ~c"application/octet-stream",
+             {chunkifier, file}},
+            http_opts(),
+            []
+          )
 
-          case result do
-            {:ok, {{_, status, _}, _h, body}} -> {status, decode_body(body)}
-            {:error, reason} -> {:error, reason}
-          end
-        after
-          File.close(file)
+        case result do
+          {:ok, {{_, status, _}, _h, body}} -> {status, decode_body(body)}
+          {:error, reason} -> {:error, reason}
         end
-
-      {:error, reason} ->
-        {:error, reason}
+      after
+        File.close(file)
+      end
+    else
+      {:error, reason} -> {:error, reason}
     end
   end
 
