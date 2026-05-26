@@ -12,7 +12,7 @@
 # the real hash to substitute in. Rebuild whenever go.sum changes.
 buildGoModule {
   pname = "dust-tsnet-sidecar";
-  version = "0.1.2";
+  version = "0.1.3";
 
   src = ../apps/dust_bridge/native/tsnet_sidecar;
 
