@@ -100,7 +100,7 @@ defmodule Dust.Daemon.FileSystem do
          {:ok, file_meta, stream} <- Packer.process_file_stream(expanded_path),
          {:ok, size} <- get_file_size(expanded_path),
          {:ok, checksum} <- get_file_checksum(expanded_path),
-         mime = get_mime_type(expanded_path),
+         mime = get_mime_type(expanded_path, file_name),
          mapped_meta = %{size: size, checksum: checksum, mime: mime},
          {:ok, file_uuid} <- FileSystem.put_file(dest_dir_id, file_name, mapped_meta) do
       upload_chunks(file_uuid, file_meta, stream, size)
@@ -156,13 +156,17 @@ defmodule Dust.Daemon.FileSystem do
     end
   end
 
-  defp get_mime_type(path) do
-    # Use extension-based lookup (cross-platform, no external commands)
-    ext_mime = MIME.from_path(path)
+  # `content_path` is the on-disk bytes (typically a daemon-owned temp
+  # file from the streaming upload handler — name is meaningless).
+  # `display_name` is the user-supplied filename whose extension we
+  # want to honour for the extension lookup. Falls back to content
+  # sniffing via `file -b --mime-type` only when the extension is
+  # unrecognised.
+  defp get_mime_type(content_path, display_name) do
+    ext_mime = MIME.from_path(display_name)
 
-    # On Unix, try the `file` command for better accuracy when extension is generic
     if ext_mime == "application/octet-stream" do
-      try_system_file_command(path)
+      try_system_file_command(content_path)
     else
       ext_mime
     end
