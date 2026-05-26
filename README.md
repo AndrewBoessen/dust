@@ -340,16 +340,16 @@ dustctl mkdir photos
 dustctl upload ~/documents/report.pdf
 
 # Download a file by its ID to a local path
-dustctl download <FILE_ID> ~/downloads/report.pdf
+dustctl download <FILE_PATH> <DEST_PATH>
 
 # Move or rename
-dustctl mv photos/old-name.jpg photos/new-name.jpg
+dustctl mv <OLD_PATH> <NEW_PATH>
 
 # Remove a file or directory
-dustctl rm <FILE_ID>
+dustctl rm <FILE_PATH>
 
 # Show metadata for a file
-dustctl stat <FILE_ID>
+dustctl stat <FILE_PATH>
 ```
 
 ### Cluster
