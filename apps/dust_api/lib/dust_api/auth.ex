@@ -132,10 +132,15 @@ defmodule Dust.Api.Auth do
     :crypto.strong_rand_bytes(@token_bytes) |> Base.encode16(case: :lower)
   end
 
+  # 0o640 lets the daemon's group read the token — the standard pattern for
+  # a service credential consumed by admin users (cf. /etc/shadow, postgres
+  # peer-auth setups). On NixOS, add operator accounts to the `dust` group;
+  # on a single-user dev box the group is your own primary group, so the
+  # effective permission is the same as 0600.
   @spec set_file_permissions(Path.t()) :: :ok
   defp set_file_permissions(path) do
     case :os.type() do
-      {:unix, _} -> File.chmod!(path, 0o600)
+      {:unix, _} -> File.chmod!(path, 0o640)
       _ -> :ok
     end
   end

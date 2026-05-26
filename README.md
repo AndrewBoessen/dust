@@ -100,6 +100,7 @@ the flake's NixOS module instead. Add to your system flake:
         dust.nixosModules.default
         ({ ... }: {
           nixpkgs.overlays = [ dust.overlays.default ];
+
           services.dust.enable = true;
         })
       ];
@@ -108,10 +109,12 @@ the flake's NixOS module instead. Add to your system flake:
 }
 ```
 
-Then `sudo nixos-rebuild switch`. The module creates a `dust` user,
-provisions `/var/lib/dust` and `/var/log/dust`, and registers a systemd
-unit that starts on boot. See [Configuration → NixOS](#nixos) below for
-the full list of `services.dust.*` options.
+Then `sudo nixos-rebuild switch`, and log out and back in so your shell
+picks up the new group membership (`id` should show `dust`). The module
+creates a `dust` user, provisions `/var/lib/dust` and `/var/log/dust`,
+and registers a systemd unit that starts on boot. See
+[Configuration → NixOS](#nixos) below for the full list of
+`services.dust.*` options.
 
 `dustctl daemon install` / `uninstall` are inert on NixOS — they exit
 non-zero with a pointer back to this section, because service config is
@@ -152,13 +155,13 @@ run `dustctl daemon uninstall`.
 
 `dustctl` is the command-line client for interacting with a running Dust daemon. Download the latest CLI release for your platform from the [GitHub Releases](https://github.com/AndrewBoessen/dust/releases) page.
 
-| Platform                      | Artifact                      |
-| ----------------------------- | ----------------------------- |
-| Linux x86_64                  | `dustctl_linux_x86_64`        |
-| Linux aarch64                 | `dustctl_linux_aarch64`       |
-| macOS x86_64 (Intel)          | `dustctl_macos_x86_64`        |
-| macOS aarch64 (Apple Silicon) | `dustctl_macos_aarch64`       |
-| Windows x86_64                | `dustctl_windows_x86_64.exe`  |
+| Platform                      | Artifact                     |
+| ----------------------------- | ---------------------------- |
+| Linux x86_64                  | `dustctl_linux_x86_64`       |
+| Linux aarch64                 | `dustctl_linux_aarch64`      |
+| macOS x86_64 (Intel)          | `dustctl_macos_x86_64`       |
+| macOS aarch64 (Apple Silicon) | `dustctl_macos_aarch64`      |
+| Windows x86_64                | `dustctl_windows_x86_64.exe` |
 
 #### Linux
 
@@ -200,8 +203,19 @@ nixpkgs.overlays = [ inputs.dust.overlays.default ];
 environment.systemPackages = [ pkgs.dustctl ];
 ```
 
-The Nix package builds a plain mix release (no burrito), so the executable
-lives at `${pkgs.dustctl}/bin/dustctl`.
+The Nix package builds a plain mix release (no burrito), so the
+executable lives at `${pkgs.dustctl}/bin/dustctl`.
+
+If you're talking to a daemon managed by `services.dust`, add your
+account to the `dust` group so the CLI can read the API token:
+
+```nix
+users.users.alice.extraGroups = [ "dust" ];
+```
+
+Without this, `dustctl` will report a permission error on
+`/var/lib/dust/api_token`. See [Daemon → NixOS](#nixos) above for the
+full setup.
 
 #### Windows
 
@@ -438,21 +452,21 @@ See the [Getting Started](#getting-started) section for how to use the auth key 
 The flake's NixOS module (`dust.nixosModules.default`) exposes the daemon
 under `services.dust`. Common options:
 
-| Option                          | Default              | Description                                                              |
-| ------------------------------- | -------------------- | ------------------------------------------------------------------------ |
-| `services.dust.enable`          | `false`              | Enable the daemon as a systemd service.                                  |
-| `services.dust.package`         | `pkgs.dust`          | Package to run (typically from the flake's `overlays.default`).          |
-| `services.dust.user`            | `"dust"`             | System user the daemon runs as.                                          |
-| `services.dust.group`           | `"dust"`             | System group the daemon runs as.                                         |
-| `services.dust.dataDir`         | `/var/lib/dust`      | Persistent state directory (sets `DUST_DATA_DIR` and `HOME`).            |
-| `services.dust.logDir`          | `/var/log/dust`      | Log directory.                                                           |
-| `services.dust.apiBind`         | `"127.0.0.1"`        | API bind address (`DUST_API_BIND`).                                      |
-| `services.dust.apiPort`         | `4884`               | API TCP port (`DUST_API_PORT`).                                          |
-| `services.dust.nodeName`        | `"dust@127.0.0.1"`   | `RELEASE_NODE` for the BEAM node.                                        |
-| `services.dust.cookieFile`      | `null`               | Path to a file with the Erlang distribution cookie (kept outside the Nix store). |
-| `services.dust.environmentFile` | `null`               | systemd `EnvironmentFile=` for secrets (e.g. `TS_AUTHKEY`).              |
-| `services.dust.openFirewall`    | `false`              | Open `apiPort` in the firewall. Off by default — Dust expects API traffic over loopback or Tailscale. |
-| `services.dust.extraEnvironment`| `{ }`                | Extra env vars on the unit (e.g. `{ TS_TAGS = "tag:dust-node"; }`).      |
+| Option                           | Default            | Description                                                                                           |
+| -------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------- |
+| `services.dust.enable`           | `false`            | Enable the daemon as a systemd service.                                                               |
+| `services.dust.package`          | `pkgs.dust`        | Package to run (typically from the flake's `overlays.default`).                                       |
+| `services.dust.user`             | `"dust"`           | System user the daemon runs as.                                                                       |
+| `services.dust.group`            | `"dust"`           | System group the daemon runs as.                                                                      |
+| `services.dust.dataDir`          | `/var/lib/dust`    | Persistent state directory (sets `DUST_DATA_DIR` and `HOME`).                                         |
+| `services.dust.logDir`           | `/var/log/dust`    | Log directory.                                                                                        |
+| `services.dust.apiBind`          | `"127.0.0.1"`      | API bind address (`DUST_API_BIND`).                                                                   |
+| `services.dust.apiPort`          | `4884`             | API TCP port (`DUST_API_PORT`).                                                                       |
+| `services.dust.nodeName`         | `"dust@127.0.0.1"` | `RELEASE_NODE` for the BEAM node.                                                                     |
+| `services.dust.cookieFile`       | `null`             | Path to a file with the Erlang distribution cookie (kept outside the Nix store).                      |
+| `services.dust.environmentFile`  | `null`             | systemd `EnvironmentFile=` for secrets (e.g. `TS_AUTHKEY`).                                           |
+| `services.dust.openFirewall`     | `false`            | Open `apiPort` in the firewall. Off by default — Dust expects API traffic over loopback or Tailscale. |
+| `services.dust.extraEnvironment` | `{ }`              | Extra env vars on the unit (e.g. `{ TS_TAGS = "tag:dust-node"; }`).                                   |
 
 Example with secrets in a sops-nix file:
 
@@ -474,6 +488,21 @@ Example with secrets in a sops-nix file:
 `start` / `stop` are short-circuited on NixOS — the module owns the
 unit, so the CLI returns a `nixos_managed` error instead of trying to
 write to `/etc/systemd/system/`.
+
+#### Granting CLI access to the API token
+
+The daemon writes its bearer token to `<dataDir>/api_token` mode `0640
+dust:dust`. Any account in the `dust` group can read it (and traverse
+the `0750` `dataDir`). Add operators with:
+
+```nix
+users.users.alice.extraGroups = [ "dust" ];
+```
+
+After `nixos-rebuild switch`, the user must start a fresh login session
+for the membership to take effect (`newgrp dust` works as a one-off in
+the current shell). If you'd rather not grant group membership, pass
+the token explicitly per-invocation with `dustctl --token <hex> …`.
 
 ## Security
 
