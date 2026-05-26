@@ -98,9 +98,21 @@ the flake's NixOS module instead. Add to your system flake:
       system = "x86_64-linux";
       modules = [
         dust.nixosModules.default
-        ({ ... }: {
+        ({ pkgs, ... }: {
           nixpkgs.overlays = [ dust.overlays.default ];
+
+          # Enable the daemon (runs as the `dust` system user).
           services.dust.enable = true;
+
+          # Install the CLI system-wide. The module only configures the
+          # systemd unit — it does NOT add `dustctl` to PATH on its own.
+          environment.systemPackages = [ pkgs.dustctl ];
+
+          # Add your account to the `dust` group so `dustctl` can read
+          # `/var/lib/dust/api_token` (the daemon writes it 0640
+          # dust:dust). Without this, every CLI call hits "permission
+          # denied" on the token file.
+          users.users.alice.extraGroups = [ "dust" ];
         })
       ];
     };
@@ -108,10 +120,17 @@ the flake's NixOS module instead. Add to your system flake:
 }
 ```
 
-Then `sudo nixos-rebuild switch`. The module creates a `dust` user,
-provisions `/var/lib/dust` and `/var/log/dust`, and registers a systemd
-unit that starts on boot. See [Configuration → NixOS](#nixos) below for
-the full list of `services.dust.*` options.
+Then `sudo nixos-rebuild switch`, and log out and back in so your shell
+picks up the new group membership (`id` should show `dust`). The module
+creates a `dust` user, provisions `/var/lib/dust` and `/var/log/dust`,
+and registers a systemd unit that starts on boot. See
+[Configuration → NixOS](#nixos) below for the full list of
+`services.dust.*` options.
+
+If you enabled the daemon before this README was updated, the existing
+`api_token` was written `0600`. Either `sudo chmod 0640
+/var/lib/dust/api_token` once, or stop the daemon and delete the file —
+the daemon regenerates it with the new mode on next start.
 
 `dustctl daemon install` / `uninstall` are inert on NixOS — they exit
 non-zero with a pointer back to this section, because service config is
@@ -200,8 +219,19 @@ nixpkgs.overlays = [ inputs.dust.overlays.default ];
 environment.systemPackages = [ pkgs.dustctl ];
 ```
 
-The Nix package builds a plain mix release (no burrito), so the executable
-lives at `${pkgs.dustctl}/bin/dustctl`.
+The Nix package builds a plain mix release (no burrito), so the
+executable lives at `${pkgs.dustctl}/bin/dustctl`.
+
+If you're talking to a daemon managed by `services.dust`, add your
+account to the `dust` group so the CLI can read the API token:
+
+```nix
+users.users.alice.extraGroups = [ "dust" ];
+```
+
+Without this, `dustctl` will report a permission error on
+`/var/lib/dust/api_token`. See [Daemon → NixOS](#nixos) above for the
+full setup.
 
 #### Windows
 
@@ -474,6 +504,21 @@ Example with secrets in a sops-nix file:
 `start` / `stop` are short-circuited on NixOS — the module owns the
 unit, so the CLI returns a `nixos_managed` error instead of trying to
 write to `/etc/systemd/system/`.
+
+#### Granting CLI access to the API token
+
+The daemon writes its bearer token to `<dataDir>/api_token` mode `0640
+dust:dust`. Any account in the `dust` group can read it (and traverse
+the `0750` `dataDir`). Add operators with:
+
+```nix
+users.users.alice.extraGroups = [ "dust" ];
+```
+
+After `nixos-rebuild switch`, the user must start a fresh login session
+for the membership to take effect (`newgrp dust` works as a one-off in
+the current shell). If you'd rather not grant group membership, pass
+the token explicitly per-invocation with `dustctl --token <hex> …`.
 
 ## Security
 
