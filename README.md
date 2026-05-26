@@ -110,7 +110,7 @@ the flake's NixOS module instead. Add to your system flake:
 ```
 
 Then `sudo nixos-rebuild switch`, and log out and back in so your shell
-picks up the new group membership (`id` should show `dust`). The module
+picks up the new group membership. The module
 creates a `dust` user, provisions `/var/lib/dust` and `/var/log/dust`,
 and registers a systemd unit that starts on boot. See
 [Configuration → NixOS](#nixos) below for the full list of
