@@ -42,9 +42,9 @@ defmodule Dust.BridgeTest do
   # ── get_peers/0 ─────────────────────────────────────────────────────────
 
   describe "get_peers/0" do
-    test "parses a comma-separated list of IPs from OK response" do
+    test "parses a comma-separated list of name@ip entries from OK response" do
       assert {:ok, peers} = Dust.Bridge.get_peers()
-      assert peers == ["100.64.0.1", "100.64.0.2", "100.64.0.3"]
+      assert peers == ["dust@100.64.0.1", "alice@100.64.0.2", "bob@100.64.0.3"]
     end
   end
 

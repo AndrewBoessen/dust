@@ -166,6 +166,10 @@ func handleCommand(srv *tsnet.Server, cmd []byte) []byte {
 		return []byte("OK: invite created")
 
 	case "PEERS":
+		// Response format: "OK:name1@ip1,name2@ip2,..."
+		// `name` is the peer's node-name prefix, recovered by stripping the
+		// "dust-node-" hostname prefix we set in TS_HOSTNAME. Falls back to
+		// "dust" if the prefix is missing (e.g. legacy peers).
 		lc, err := srv.LocalClient()
 		if err != nil {
 			return []byte(fmt.Sprintf("ERR: %v", err))
@@ -174,13 +178,15 @@ func handleCommand(srv *tsnet.Server, cmd []byte) []byte {
 		if err != nil {
 			return []byte(fmt.Sprintf("ERR: %v", err))
 		}
-		var ips []string
+		var entries []string
 		for _, peer := range st.Peer {
 			if hasMatchingTagView(peer.Tags) && len(peer.TailscaleIPs) > 0 {
-				ips = append(ips, peer.TailscaleIPs[0].String())
+				name := nodeNameFromHostname(peer.HostName)
+				ip := peer.TailscaleIPs[0].String()
+				entries = append(entries, name+"@"+ip)
 			}
 		}
-		return []byte("OK:" + strings.Join(ips, ","))
+		return []byte("OK:" + strings.Join(entries, ","))
 
 	case "PROXY":
 		// PROXY <targetIP> <targetPort>
@@ -470,6 +476,22 @@ func handleSecretClient(conn net.Conn, lc *tailscale.LocalClient) {
 	if _, err := conn.Write(masterSecrets); err != nil {
 		log.Printf("SERVE_SECRETS: write error: %v", err)
 	}
+}
+
+// nodeNameFromHostname recovers a peer's Erlang node-name prefix from the
+// hostname it advertised on Tailscale. We set TS_HOSTNAME to
+// "dust-node-<name>" in Dust.Bridge so the prefix carries the chosen node
+// name. Returns "dust" if the prefix is missing or the result would be empty.
+func nodeNameFromHostname(hostname string) string {
+	const prefix = "dust-node-"
+	hostname = strings.TrimSpace(hostname)
+	if strings.HasPrefix(hostname, prefix) {
+		name := strings.TrimPrefix(hostname, prefix)
+		if name != "" {
+			return name
+		}
+	}
+	return "dust"
 }
 
 // getAdvertiseTags returns the tags this node should advertise.

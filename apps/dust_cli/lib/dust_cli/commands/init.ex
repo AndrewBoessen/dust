@@ -105,7 +105,12 @@ defmodule Dust.CLI.Commands.Init do
 
     IO.puts("")
 
-    # Step 4: Network setup
+    # Step 4: Node name
+    setup_node_name(config)
+
+    IO.puts("")
+
+    # Step 5: Network setup
     Formatter.heading("Network Setup")
     IO.puts("")
 
@@ -140,6 +145,62 @@ defmodule Dust.CLI.Commands.Init do
 
     0
   end
+
+  # ── Node name ──────────────────────────────────────────────────────────
+
+  defp setup_node_name(config) do
+    Formatter.heading("Node Name")
+    IO.puts("")
+
+    current =
+      case Client.get(config, "/api/v1/config") do
+        {200, {:ok, %{"config" => %{"node_name" => name}}}} when is_binary(name) and name != "" ->
+          name
+
+        _ ->
+          "dust"
+      end
+
+    IO.puts("  This is the short name used as the Erlang node prefix (e.g. <name>@<ip>).")
+    IO.puts("  Allowed: letters, digits, '-' and '_'. Press Enter to keep the current value.")
+    IO.puts("")
+
+    chosen =
+      Owl.IO.input(label: "Node name [#{current}]", optional: true)
+      |> case do
+        nil -> current
+        "" -> current
+        val -> String.trim(val)
+      end
+
+    cond do
+      chosen == current ->
+        Formatter.dim("  Keeping current node name: #{current}")
+
+      not valid_node_name?(chosen) ->
+        Formatter.error("Invalid node name '#{chosen}'.")
+        Formatter.info("Must be 1-63 chars, start with a letter/digit, contain only letters, digits, '-' or '_'.")
+
+      true ->
+        case Client.put(config, "/api/v1/config", %{node_name: chosen}) do
+          {200, _} ->
+            Formatter.success("Node name set to '#{chosen}'")
+            Formatter.dim("  Takes effect on next daemon restart.")
+
+          {_, {:ok, %{"results" => results}}} ->
+            Formatter.error("Failed to set node name: #{inspect(results[to_string(:node_name)])}")
+
+          other ->
+            Formatter.api_error(other)
+        end
+    end
+  end
+
+  defp valid_node_name?(name) when is_binary(name) do
+    Regex.match?(~r/\A[A-Za-z0-9][A-Za-z0-9_-]{0,62}\z/, name)
+  end
+
+  defp valid_node_name?(_), do: false
 
   # ── New network ────────────────────────────────────────────────────────
 

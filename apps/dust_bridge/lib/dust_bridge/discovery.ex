@@ -1,13 +1,18 @@
 defmodule Dust.Bridge.Discovery do
   @moduledoc """
-  Periodically discovers peer Tailscale IPs and connects them to the
-  Erlang cluster.
+  Periodically discovers peer dust nodes and connects them to the Erlang
+  cluster.
 
   Uses `Dust.Bridge.get_peers/0` to query the Go `tsnet_sidecar` for the
-  list of peer IPs on the same Tailnet, then calls `Node.connect/1` for
-  any peer not already in `Node.list/0`. Connection triggers the custom
-  EPMD module (`Dust.Bridge.EPMD`) which proxies Erlang distribution
-  traffic through the Tailscale tunnel.
+  list of peers on the same Tailnet. Each entry is a `"name@ip"` string
+  identifying a peer; this module calls `Node.connect/1` for any peer not
+  already in `Node.list/0`. Connection triggers the custom EPMD module
+  (`Dust.Bridge.EPMD`) which proxies Erlang distribution traffic through
+  the Tailscale tunnel.
+
+  Because each peer's node-name prefix is recovered from its Tailscale
+  hostname, peers can run under different node names (configured via
+  `dustctl init`) and still discover each other.
 
   The default poll interval is 15 seconds.
   """
@@ -48,16 +53,12 @@ defmodule Dust.Bridge.Discovery do
 
   @spec connect_to_peers([String.t()]) :: :ok
   defp connect_to_peers(peers) do
-    current_ip =
-      Node.self()
-      |> to_string()
-      |> String.split("@")
-      |> List.last()
+    self_node = to_string(Node.self())
 
     peers
-    |> Enum.reject(&(&1 == current_ip))
-    |> Enum.each(fn peer_ip ->
-      peer_node = String.to_atom("dust@" <> peer_ip)
+    |> Enum.reject(&(&1 == self_node))
+    |> Enum.each(fn entry ->
+      peer_node = String.to_atom(entry)
 
       if peer_node not in Node.list() do
         Logger.debug("Discovery: Attempting to connect to #{peer_node}")

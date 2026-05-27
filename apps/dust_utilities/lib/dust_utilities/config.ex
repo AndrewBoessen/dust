@@ -41,7 +41,8 @@ defmodule Dust.Utilities.Config do
     max_reconstruct_per_sweep: 5,
     api_port: 4884,
     api_bind: "127.0.0.1",
-    root_dir_id: ""
+    root_dir_id: "",
+    node_name: "dust"
   }
 
   @boot_only_keys [:persist_dir, :erasure_k, :erasure_m]
@@ -52,7 +53,8 @@ defmodule Dust.Utilities.Config do
     :max_reconstruct_per_sweep,
     :api_port,
     :api_bind,
-    :root_dir_id
+    :root_dir_id,
+    :node_name
   ]
   @all_keys @boot_only_keys ++ @runtime_keys
 
@@ -89,7 +91,15 @@ defmodule Dust.Utilities.Config do
   # root_dir_id           — UUID of the root filesystem directory.
   #                         Set automatically during setup or can be empty.
   #
+  # node_name             — Short name used as the prefix of this node's Erlang
+  #                         node atom (e.g. "dust" → dust@<ip>). The Erlang VM
+  #                         reads this value at boot, so changes only take
+  #                         effect after a daemon restart.
+  #
   """
+
+  @node_name_file "node_name"
+  @node_name_pattern ~r/\A[A-Za-z0-9][A-Za-z0-9_-]{0,62}\z/
 
   # ── Read API ──────────────────────────────────────────────────────────
 
@@ -133,6 +143,14 @@ defmodule Dust.Utilities.Config do
   @spec root_dir_id() :: String.t()
   def root_dir_id, do: get(:root_dir_id)
 
+  @doc "Short name used as the prefix of this node's Erlang node atom."
+  @spec node_name() :: String.t()
+  def node_name, do: get(:node_name)
+
+  @doc "Path to the plain-text node_name file read by the release boot script."
+  @spec node_name_file() :: Path.t()
+  def node_name_file, do: Path.join(persist_dir(), @node_name_file)
+
   @doc "Total shard count (K + M)."
   @spec total_shards() :: pos_integer()
   def total_shards, do: erasure_k() + erasure_m()
@@ -161,6 +179,7 @@ defmodule Dust.Utilities.Config do
       new_config = Map.put(config, key, value)
       Application.put_env(:dust_utilities, :config, new_config)
       save_yaml!(new_config)
+      if key == :node_name, do: save_node_name_file!(new_config)
       :ok
     end
   end
@@ -214,6 +233,10 @@ defmodule Dust.Utilities.Config do
       save_yaml!(config)
       Logger.info("Created default config at #{yaml_path}")
     end
+
+    # Step 7: keep the node_name sidecar file in sync with the resolved config
+    # so the release boot script always has an up-to-date value to read.
+    save_node_name_file!(config)
 
     Logger.info("Config loaded: #{inspect(config)}")
     :ok
@@ -305,6 +328,12 @@ defmodule Dust.Utilities.Config do
     File.write!(path, content)
   end
 
+  @spec save_node_name_file!(map()) :: :ok
+  defp save_node_name_file!(config) do
+    path = Path.join(Map.fetch!(config, :persist_dir), @node_name_file)
+    File.write!(path, Map.fetch!(config, :node_name) <> "\n")
+  end
+
   @spec encode_yaml(map()) :: String.t()
   defp encode_yaml(config) do
     lines =
@@ -373,5 +402,12 @@ defmodule Dust.Utilities.Config do
   defp validate_key(:api_port, v) when is_integer(v) and v > 0 and v <= 65535, do: :ok
   defp validate_key(:api_bind, v) when is_binary(v) and v != "", do: :ok
   defp validate_key(:root_dir_id, v) when is_binary(v), do: :ok
+
+  defp validate_key(:node_name, v) when is_binary(v) do
+    if Regex.match?(@node_name_pattern, v),
+      do: :ok,
+      else: {:error, {:node_name, :invalid_format, v}}
+  end
+
   defp validate_key(key, value), do: {:error, {key, :invalid, value}}
 end

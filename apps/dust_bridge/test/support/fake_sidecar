@@ -49,7 +49,7 @@ defmodule FakeSidecar do
   # ── Command handlers ───────────────────────────────────────────────
 
   defp handle("PEERS") do
-    "OK:100.64.0.1,100.64.0.2,100.64.0.3"
+    "OK:dust@100.64.0.1,alice@100.64.0.2,bob@100.64.0.3"
   end
 
   defp handle("PEERS_EMPTY") do

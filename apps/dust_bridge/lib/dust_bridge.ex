@@ -103,15 +103,20 @@ defmodule Dust.Bridge do
   end
 
   @doc """
-  Gets all peer Tailscale IPs from the tsnet sidecar.
+  Gets all peer node identifiers from the tsnet sidecar.
+
+  Each entry is a `"name@ip"` string suitable for passing to
+  `String.to_atom/1` and `Node.connect/1`. The `name` portion is the
+  peer's chosen node-name prefix (recovered from its Tailscale hostname);
+  the `ip` portion is the peer's Tailscale IP.
   """
   @impl true
   @spec get_peers() :: {:ok, [String.t()]} | {:error, term()}
   def get_peers() do
     case send_command("PEERS") do
-      {:ok, <<"OK:", ips::binary>>} ->
-        ips_list = String.split(ips, ",", trim: true)
-        {:ok, ips_list}
+      {:ok, <<"OK:", entries::binary>>} ->
+        entries_list = String.split(entries, ",", trim: true)
+        {:ok, entries_list}
 
       {:ok, <<"ERR: ", reason::binary>>} ->
         {:error, reason}
