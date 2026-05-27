@@ -50,9 +50,17 @@ in
     };
 
     nodeName = lib.mkOption {
-      type = lib.types.str;
-      default = "dust@127.0.0.1";
-      description = "Erlang RELEASE_NODE value for the daemon's BEAM node.";
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "dust@name";
+      description = ''
+        Optional override for the daemon's Erlang RELEASE_NODE. When null
+        (the default), the node's name is sourced from
+        `''${dataDir}/node_name` — written by `dustctl init` — via the
+        release boot script. Set this only to pin the node atom
+        statically, e.g. for a stateless deployment that doesn't run
+        `dustctl init`.
+      '';
     };
 
     cookieFile = lib.mkOption {
@@ -121,9 +129,10 @@ in
         DUST_DATA_DIR = cfg.dataDir;
         DUST_API_BIND = cfg.apiBind;
         DUST_API_PORT = toString cfg.apiPort;
-        RELEASE_NODE = cfg.nodeName;
         RELEASE_TMP = "${cfg.dataDir}/tmp";
-      } // cfg.extraEnvironment;
+      }
+      // lib.optionalAttrs (cfg.nodeName != null) { RELEASE_NODE = cfg.nodeName; }
+      // cfg.extraEnvironment;
 
       serviceConfig = {
         Type = "exec";
