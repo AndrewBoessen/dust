@@ -1,0 +1,107 @@
+# Configuration
+
+## Tailscale Tags & ACL Policy
+
+Dust nodes use **Tailscale tags** to group themselves on the tailnet and **ACL policies** to isolate them from other devices. This configuration is done once per cluster in the [Tailscale Admin Console → Access Controls](https://login.tailscale.com/admin/acls/file):
+
+```json
+{
+  "tagOwners": {
+    "tag:dust-node": ["autogroup:admin"]
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "src": ["tag:dust-node"],
+      "dst": ["tag:dust-node:*"]
+    }
+  ]
+}
+```
+
+This ensures dust nodes can only communicate with each other — not with any other devices on your tailnet.
+
+Once the policy is in place, generate a **tagged auth key** in the admin console under **Settings → Keys**:
+
+1. Enable **Tags** and select `tag:dust-node`.
+2. Enable **Pre-approved** (if device approval is enabled).
+3. Optionally enable **Reusable** for multi-node deployments.
+
+See [Getting Started](getting-started.md) for how to use the auth key when setting up a node.
+
+## Environment Variables
+
+### Tailscale Networking
+
+| Variable      | Required | Default            | Description                                                  |
+| ------------- | -------- | ------------------ | ------------------------------------------------------------ |
+| `TS_AUTHKEY`  | No       | —                  | Tailscale auth key. If unset, interactive URL login is used. |
+| `TS_HOSTNAME` | No       | `dust-node-<name>` | Hostname for the node on the tailnet.                        |
+| `TS_TAGS`     | No       | `tag:dust-node`    | Comma-separated Tailscale tags to advertise.                 |
+| `JOIN_IP`     | No       | —                  | Tailscale IP of an existing node to join.                    |
+| `JOIN_TOKEN`  | No       | —                  | One-time invite token for mesh join.                         |
+
+### Daemon Configuration
+
+| Variable        | Required | Default     | Description                             |
+| --------------- | -------- | ----------- | --------------------------------------- |
+| `DUST_DATA_DIR` | No       | `~/.dust`   | Root directory for all persistent data. |
+| `DUST_API_PORT` | No       | `4884`      | TCP port for the local HTTP API.        |
+| `DUST_API_BIND` | No       | `127.0.0.1` | IP address the HTTP API binds to.       |
+
+## NixOS
+
+The flake's NixOS module (`dust.nixosModules.default`) exposes the daemon
+under `services.dust`. Common options:
+
+| Option                           | Default            | Description                                                                                           |
+| -------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------- |
+| `services.dust.enable`           | `false`            | Enable the daemon as a systemd service.                                                               |
+| `services.dust.package`          | `pkgs.dust`        | Package to run (typically from the flake's `overlays.default`).                                       |
+| `services.dust.user`             | `"dust"`           | System user the daemon runs as.                                                                       |
+| `services.dust.group`            | `"dust"`           | System group the daemon runs as.                                                                      |
+| `services.dust.dataDir`          | `/var/lib/dust`    | Persistent state directory (sets `DUST_DATA_DIR` and `HOME`).                                         |
+| `services.dust.logDir`           | `/var/log/dust`    | Log directory.                                                                                        |
+| `services.dust.apiBind`          | `"127.0.0.1"`      | API bind address (`DUST_API_BIND`).                                                                   |
+| `services.dust.apiPort`          | `4884`             | API TCP port (`DUST_API_PORT`).                                                                       |
+| `services.dust.nodeName`         | `"dust@127.0.0.1"` | `RELEASE_NODE` for the BEAM node.                                                                     |
+| `services.dust.cookieFile`       | `null`             | Path to a file with the Erlang distribution cookie (kept outside the Nix store).                      |
+| `services.dust.environmentFile`  | `null`             | systemd `EnvironmentFile=` for secrets (e.g. `TS_AUTHKEY`).                                           |
+| `services.dust.openFirewall`     | `false`            | Open `apiPort` in the firewall. Off by default — Dust expects API traffic over loopback or Tailscale. |
+| `services.dust.extraEnvironment` | `{ }`              | Extra env vars on the unit (e.g. `{ TS_TAGS = "tag:dust-node"; }`).                                   |
+
+Example with secrets in a sops-nix file:
+
+```nix
+{
+  services.dust = {
+    enable = true;
+    cookieFile = config.sops.secrets."dust/cookie".path;
+    environmentFile = config.sops.secrets."dust/env".path;
+    extraEnvironment = {
+      TS_HOSTNAME = "dust-node-${config.networking.hostName}";
+      TS_TAGS = "tag:dust-node";
+    };
+  };
+}
+```
+
+`dustctl` invocations like `dustctl daemon install` / `uninstall` /
+`start` / `stop` are short-circuited on NixOS — the module owns the
+unit, so the CLI returns a `nixos_managed` error instead of trying to
+write to `/etc/systemd/system/`.
+
+### Granting CLI access to the API token
+
+The daemon writes its bearer token to `<dataDir>/api_token` mode `0640
+dust:dust`. Any account in the `dust` group can read it (and traverse
+the `0750` `dataDir`). Add operators with:
+
+```nix
+users.users.alice.extraGroups = [ "dust" ];
+```
+
+After `nixos-rebuild switch`, the user must start a fresh login session
+for the membership to take effect (`newgrp dust` works as a one-off in
+the current shell). If you'd rather not grant group membership, pass
+the token explicitly per-invocation with `dustctl --token <hex> …`.
