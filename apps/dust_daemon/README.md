@@ -10,7 +10,7 @@ by adding `dust_daemon` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:dust_daemon, "~> 0.1.3"}
+    {:dust_daemon, "~> 0.1.4"}
   ]
 end
 ```

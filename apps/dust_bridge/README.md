@@ -10,7 +10,7 @@ by adding `bridge` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:bridge, "~> 0.1.3"}
+    {:bridge, "~> 0.1.4"}
   ]
 end
 ```
