@@ -9,7 +9,7 @@
 # release isn't an opaque self-extracting blob.
 let
   pname = "dustctl";
-  version = "0.1.4";
+  version = "0.1.5";
 
   src = ../.;
 

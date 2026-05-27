@@ -10,7 +10,7 @@ by adding `ui` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:ui, "~> 0.1.4"}
+    {:ui, "~> 0.1.5"}
   ]
 end
 ```
