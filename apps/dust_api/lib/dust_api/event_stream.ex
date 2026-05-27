@@ -31,7 +31,11 @@ defmodule Dust.Api.EventStream do
     Registry.register(Dust.Daemon.Registry, :system_ready, [])
 
     Logger.debug("EventStream: WebSocket client connected")
-    {:ok, %{}}
+    # Push a `ready` frame so clients can wait for subscription to be live
+    # before kicking off work that produces broadcasts — without this, a
+    # single-chunk download can broadcast before Registry.register completes.
+    ready = Jason.encode!(%{type: "ready"})
+    {:push, {:text, ready}, %{}}
   end
 
   @impl true

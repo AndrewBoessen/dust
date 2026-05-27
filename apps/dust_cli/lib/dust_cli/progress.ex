@@ -9,13 +9,32 @@ defmodule Dust.CLI.Progress do
     with {:ok, token} <- resolve_token(config) do
       url = "ws://#{config.host}:#{config.port}/api/v1/ws/events"
 
-      WebSockex.start_link(url, __MODULE__, %{
-        label: label,
-        event_type: @type_to_event[type],
-        total: nil,
-        current: 0,
-        caller: self()
-      }, extra_headers: [{"Authorization", "Bearer #{token}"}])
+      result =
+        WebSockex.start_link(url, __MODULE__, %{
+          label: label,
+          event_type: @type_to_event[type],
+          total: nil,
+          current: 0,
+          caller: self()
+        }, extra_headers: [{"Authorization", "Bearer #{token}"}])
+
+      # Wait for the server's `ready` frame so subscription is live before
+      # the caller fires off the HTTP request — otherwise a single-chunk
+      # download can broadcast before our subscription registers, leaving
+      # no progress bar.
+      case result do
+        {:ok, _pid} ->
+          receive do
+            :ws_ready -> :ok
+          after
+            2_000 -> :ok
+          end
+
+          result
+
+        _ ->
+          result
+      end
     end
   end
 
@@ -34,6 +53,10 @@ defmodule Dust.CLI.Progress do
   @impl true
   def handle_frame({:text, raw}, state) do
     case Jason.decode(raw) do
+      {:ok, %{"type" => "ready"}} ->
+        send(state.caller, :ws_ready)
+        {:ok, state}
+
       {:ok, %{"type" => t, "chunk" => chunk, "total" => total}}
       when t == state.event_type ->
         if is_nil(state.total) do
