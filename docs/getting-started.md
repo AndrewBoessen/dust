@@ -9,41 +9,23 @@ see the install guide for your platform:
 - [NixOS](install/nixos.md)
 - [Windows](install/windows.md)
 
+All `dustctl` commands except `daemon start` talk to the local daemon
+over HTTP, so the daemon needs to be running before you can authenticate,
+run the setup wizard, or operate on files.
+
 ## 1. Configure Tailscale
 
 Dust nodes communicate exclusively over a private Tailscale network. This step only needs to be done once per cluster — all nodes in a cluster share the same tailnet configuration.
 
-Follow the [Tailscale Tags & ACL Policy](configuration.md#tailscale-tags--acl-policy) setup in the Configuration section, then export your auth key:
+Follow the [Tailscale Tags & ACL Policy](configuration.md#tailscale-tags--acl-policy) setup in the Configuration section. Then either export a tagged auth key for non-interactive setup:
 
 ```bash
 export TS_AUTHKEY="tskey-auth-..."
 ```
 
-## 2. Authenticate
+…or skip this and use interactive browser login in step 3.
 
-Connect the node to Tailscale before running the setup wizard:
-
-```bash
-dustctl auth
-```
-
-If the node is not yet authenticated this command prints an interactive login URL. Open it in a browser to complete authentication, or set `TS_AUTHKEY` in the environment to authenticate non-interactively. Once authenticated, `dustctl auth status` shows the node's Tailscale IP and tag:
-
-```bash
-dustctl auth status
-```
-
-## 3. Run the Setup Wizard
-
-`dustctl init` walks you through first-time configuration — it creates the data directory and writes a default config:
-
-```bash
-dustctl init
-```
-
-Follow the on-screen instructions to complete setup.
-
-## 4. Start the Daemon
+## 2. Start the Daemon
 
 Start the daemon manually, or install it as a system service so it starts automatically on boot.
 
@@ -67,24 +49,49 @@ Check that the daemon is running:
 dustctl daemon status
 ```
 
-## 5. Unlock the Key Store
+## 3. Authenticate to Tailscale
 
-Dust encrypts stored data using keys held in a local key store. Unlock it before performing file operations:
+Connect the node to Tailscale:
 
 ```bash
-dustctl unlock
+dustctl auth
 ```
 
-You will be prompted for your key store passphrase. The store remains unlocked until you explicitly lock it or the daemon restarts.
+If you set `TS_AUTHKEY` before starting the daemon, the sidecar will
+already be authenticated and this command will just confirm the
+connection. Otherwise it prints an interactive login URL — open it in
+a browser to complete authentication, then `dustctl auth` polls until
+the node is connected.
 
-## 6. Join or Start a Cluster
-
-**First node** — your node is already its own cluster after `dustctl init`. Skip to the next step.
-
-**Additional nodes** — generate an invite token on an existing node, then join from the new one:
+Once authenticated, `dustctl auth status` shows the node's Tailscale IP and tag:
 
 ```bash
-# On an existing node
+dustctl auth status
+```
+
+## 4. Run the Setup Wizard
+
+`dustctl init` walks you through first-time configuration — it creates the data directory, unlocks (or creates) the local key store, and configures the network:
+
+```bash
+dustctl init
+```
+
+The wizard will:
+
+1. Create the data directory (`~/.dust` by default).
+2. Verify the daemon is running.
+3. Prompt for a key-store passphrase — on first use this creates a new key, on later runs it unlocks the existing one.
+4. Offer to create a new network (this node becomes the genesis node) or join an existing one.
+
+Follow the on-screen prompts to finish setup.
+
+## 5. Adding More Nodes
+
+If you chose "Create a new network" in the wizard, your node is already its own cluster. To add another node, generate an invite token on this node and use it from the new one:
+
+```bash
+# On the existing node
 dustctl invite
 
 # On the new node (use the IP and token printed above)
@@ -92,3 +99,12 @@ dustctl join <IP> <TOKEN>
 ```
 
 You are now ready to use Dust. See the [CLI Reference](cli.md) for a full list of commands.
+
+## Locking and Unlocking Later
+
+The key store stays unlocked until you explicitly lock it or the daemon restarts. After a restart you'll need to unlock again before performing file operations:
+
+```bash
+dustctl unlock   # prompts for the passphrase
+dustctl lock     # lock the key store
+```

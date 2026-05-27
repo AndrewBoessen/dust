@@ -37,10 +37,9 @@ To compile from source instead, see
 Once the daemon and `dustctl` are installed:
 
 ```bash
-dustctl auth          # connect node to Tailscale
-dustctl init          # first-time setup wizard
-dustctl daemon start  # start the daemon
-dustctl unlock        # unlock the local key store
+dustctl daemon start  # start the daemon (all other commands talk to it)
+dustctl auth          # connect node to Tailscale (skip if TS_AUTHKEY is set)
+dustctl init          # setup wizard: data dir, key store unlock, network setup
 ```
 
 See [Getting Started](docs/getting-started.md) for the full first-node
