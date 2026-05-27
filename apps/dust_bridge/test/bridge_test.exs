@@ -86,6 +86,14 @@ defmodule Dust.BridgeTest do
     end
   end
 
+  # ── stop_serving_secrets/0 ──────────────────────────────────────────────
+
+  describe "stop_serving_secrets/0" do
+    test "returns :ok on success" do
+      assert :ok = Dust.Bridge.stop_serving_secrets()
+    end
+  end
+
   # ── create_invite/0 ─────────────────────────────────────────────────────
 
   describe "create_invite/0" do

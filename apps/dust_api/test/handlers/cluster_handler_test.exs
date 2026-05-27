@@ -5,10 +5,34 @@ defmodule Dust.Api.Handlers.ClusterHandlerTest do
   import Plug.Test
 
   alias Dust.Api.Handlers.ClusterHandler
+  alias Dust.Core.KeyStore
 
+  setup :set_mox_from_context
   setup :verify_on_exit!
 
-  describe "create_invite/1" do
+  # Stub the bridge calls KeyStore makes when transitioning between locked
+  # and ready — these run inside the KeyStore GenServer process, not the
+  # test process, so they need to be stubs (which apply globally) rather
+  # than expectations.
+  setup do
+    Mox.set_mox_global()
+    stub(Dust.Bridge.Mock, :serve_secrets, fn _, _ -> :ok end)
+    stub(Dust.Bridge.Mock, :stop_serving_secrets, fn -> :ok end)
+    :ok
+  end
+
+  describe "create_invite/1 when keystore is unlocked" do
+    setup do
+      # The umbrella's global persist_dir is shared across apps' test suites,
+      # so a prior run may have left a master.key encrypted with a different
+      # password. Reset state before unlocking with our test password.
+      _ = KeyStore.lock()
+      File.rm(Dust.Utilities.File.master_key_file())
+      :ok = KeyStore.unlock("test_password")
+      on_exit(fn -> KeyStore.lock() end)
+      :ok
+    end
+
     test "returns 201 with the sidecar's Tailscale self_ip as join_ip" do
       expect(Dust.Bridge.Mock, :auth_status, fn ->
         {:ok, %{state: "authenticated", self_ip: "100.64.0.5", auth_url: ""}}
@@ -48,6 +72,26 @@ defmodule Dust.Api.Handlers.ClusterHandlerTest do
         |> ClusterHandler.create_invite()
 
       assert conn.status == 500
+    end
+  end
+
+  describe "create_invite/1 when keystore is locked" do
+    setup do
+      # KeyStore is locked by default; make sure no other test left it open.
+      :ok = KeyStore.lock()
+      :ok
+    end
+
+    test "returns 423 and does not touch the bridge" do
+      # No expectations on Bridge.Mock — calling auth_status or create_invite
+      # would fail verify_on_exit!.
+      conn =
+        conn(:post, "/api/v1/invite")
+        |> ClusterHandler.create_invite()
+
+      assert conn.status == 423
+      body = Jason.decode!(conn.resp_body)
+      assert body["error"] == "keystore_locked"
     end
   end
 end

@@ -30,9 +30,11 @@ defmodule Dust.Core.KeyStoreTest do
     Application.put_env(:dust_utilities, :config, %{persist_dir: tmp_dir})
     start_key_store!()
 
-    # Stub serve_secrets globally so tests that don't explicitly expect it
-    # won't trigger Mox.UnexpectedCallError warnings in the KeyStore GenServer.
+    # Stub the bridge calls KeyStore makes during unlock/lock transitions so
+    # tests that don't explicitly expect them won't trigger
+    # Mox.UnexpectedCallError warnings inside the KeyStore GenServer.
     stub(Dust.Bridge.Mock, :serve_secrets, fn _, _ -> :ok end)
+    stub(Dust.Bridge.Mock, :stop_serving_secrets, fn -> :ok end)
 
     on_exit(fn ->
       if old_env do
@@ -138,6 +140,18 @@ defmodule Dust.Core.KeyStoreTest do
       {:ok, restored_key} = KeyStore.get_key()
 
       assert restored_key == original_key
+    end
+
+    test "tells the bridge to stop serving secrets" do
+      :ok = KeyStore.unlock(@test_password)
+
+      # KeyStore.lock calls stop_serving_secrets from the GenServer process,
+      # so we have to allow the mock to be invoked from there.
+      pid = Process.whereis(KeyStore)
+      Mox.allow(Dust.Bridge.Mock, self(), pid)
+      expect(Dust.Bridge.Mock, :stop_serving_secrets, fn -> :ok end)
+
+      :ok = KeyStore.lock()
     end
   end
 

@@ -16,6 +16,13 @@ defmodule Dust.Bridge.Behaviour do
   @callback serve_secrets(master_key_b64 :: String.t(), otp_cookie :: String.t()) ::
               :ok | {:error, term()}
 
+  @doc """
+  Instructs the sidecar to stop serving secrets to joining peers. Closes the
+  key-exchange listener, wipes cached secrets, and revokes outstanding invite
+  tokens. Called by `Dust.Core.KeyStore.lock/0`.
+  """
+  @callback stop_serving_secrets() :: :ok | {:error, term()}
+
   @doc "Creates a one-time invite token and registers it with the sidecar."
   @callback create_invite() :: {:ok, token :: String.t()} | {:error, term()}
 

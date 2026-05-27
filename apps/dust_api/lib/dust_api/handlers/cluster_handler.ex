@@ -34,22 +34,32 @@ defmodule Dust.Api.Handlers.ClusterHandler do
   def create_invite(conn) do
     bridge = bridge_module()
 
-    with {:ok, %{self_ip: self_ip}} when self_ip != "" <- bridge.auth_status(),
-         {:ok, token} <- bridge.create_invite() do
-      json_response(conn, 201, %{
-        token: token,
-        join_ip: self_ip,
-        message: "Use this token and IP to join the cluster"
+    # A locked keystore means the sidecar has no master key to hand out, so
+    # the token would either dangle (no listener) or — worse, after a lock —
+    # let a joiner pull stale secrets. Reject up front.
+    if not Dust.Core.KeyStore.has_key?() do
+      json_response(conn, 423, %{
+        error: "keystore_locked",
+        message: "Unlock the key store before issuing an invite"
       })
     else
-      {:ok, %{self_ip: ""}} ->
-        json_response(conn, 503, %{
-          error: "tailscale_not_ready",
-          message: "Node has no Tailscale IP yet; cannot issue invite"
+      with {:ok, %{self_ip: self_ip}} when self_ip != "" <- bridge.auth_status(),
+           {:ok, token} <- bridge.create_invite() do
+        json_response(conn, 201, %{
+          token: token,
+          join_ip: self_ip,
+          message: "Use this token and IP to join the cluster"
         })
+      else
+        {:ok, %{self_ip: ""}} ->
+          json_response(conn, 503, %{
+            error: "tailscale_not_ready",
+            message: "Node has no Tailscale IP yet; cannot issue invite"
+          })
 
-      {:error, reason} ->
-        json_response(conn, 500, %{error: inspect(reason)})
+        {:error, reason} ->
+          json_response(conn, 500, %{error: inspect(reason)})
+      end
     end
   end
 

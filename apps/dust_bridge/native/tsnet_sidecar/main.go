@@ -23,12 +23,14 @@ const (
 )
 
 var (
-	inviteTokens   = make(map[string]time.Time)
-	inviteTokensMu sync.Mutex
-	masterSecrets  []byte
-	nodeTags       []string
-	authURL        string
-	authURLMu      sync.Mutex
+	inviteTokens    = make(map[string]time.Time)
+	inviteTokensMu  sync.Mutex
+	masterSecrets   []byte
+	secretsListener net.Listener
+	secretsMu       sync.Mutex
+	nodeTags        []string
+	authURL         string
+	authURLMu       sync.Mutex
 )
 
 func main() {
@@ -150,9 +152,17 @@ func handleCommand(srv *tsnet.Server, cmd []byte) []byte {
 		if len(parts) < 2 {
 			return []byte("ERR: SERVE_SECRETS requires payload")
 		}
-		masterSecrets = []byte(parts[1])
-		go serveSecretsToPeers(srv)
+		if err := startServingSecrets(srv, []byte(parts[1])); err != nil {
+			return []byte(fmt.Sprintf("ERR: %v", err))
+		}
 		return []byte("OK: secret server started")
+
+	case "STOP_SECRETS":
+		// Revoke the sidecar's ability to serve secrets: close the listener,
+		// wipe masterSecrets, and clear outstanding invite tokens. Called by
+		// Dust.Core.KeyStore.lock so a locked node cannot leak the master key.
+		stopServingSecrets()
+		return []byte("OK: secrets revoked")
 
 	case "INVITE_CREATE":
 		// INVITE_CREATE <token>
@@ -428,22 +438,66 @@ func joinPeer(srv *tsnet.Server, peerAddr, token string) ([]byte, error) {
 	return secrets, nil
 }
 
-func serveSecretsToPeers(srv *tsnet.Server) {
+// startServingSecrets binds the key-exchange port (idempotent) and stores the
+// secrets the sidecar should hand out. Subsequent calls just update the
+// payload — the listener and accept loop are only created on first call.
+func startServingSecrets(srv *tsnet.Server, payload []byte) error {
+	secretsMu.Lock()
+	masterSecrets = payload
+	if secretsListener != nil {
+		secretsMu.Unlock()
+		return nil
+	}
+	secretsMu.Unlock()
+
 	ln, err := srv.Listen("tcp", fmt.Sprintf(":%d", keyExchangePort))
 	if err != nil {
-		log.Printf("SERVE_SECRETS: failed to listen: %v", err)
-		return
+		return fmt.Errorf("failed to listen on :%d: %w", keyExchangePort, err)
 	}
-	defer ln.Close()
 
 	lc, err := srv.LocalClient()
 	if err != nil {
-		log.Printf("SERVE_SECRETS: localclient error: %v", err)
-		return
+		ln.Close()
+		return fmt.Errorf("localclient error: %w", err)
 	}
 
-	log.Printf("SERVE_SECRETS: listening on :%d", keyExchangePort)
+	secretsMu.Lock()
+	// Lost the race against another SERVE_SECRETS — drop our listener.
+	if secretsListener != nil {
+		secretsMu.Unlock()
+		ln.Close()
+		return nil
+	}
+	secretsListener = ln
+	secretsMu.Unlock()
 
+	log.Printf("SERVE_SECRETS: listening on :%d", keyExchangePort)
+	go acceptSecretClients(ln, lc)
+	return nil
+}
+
+// stopServingSecrets closes the key-exchange listener and wipes both the
+// cached secrets and the outstanding invite tokens. Safe to call when no
+// listener is active.
+func stopServingSecrets() {
+	secretsMu.Lock()
+	masterSecrets = nil
+	ln := secretsListener
+	secretsListener = nil
+	secretsMu.Unlock()
+
+	if ln != nil {
+		ln.Close()
+		log.Printf("STOP_SECRETS: closed listener on :%d", keyExchangePort)
+	}
+
+	inviteTokensMu.Lock()
+	inviteTokens = make(map[string]time.Time)
+	inviteTokensMu.Unlock()
+}
+
+func acceptSecretClients(ln net.Listener, lc *tailscale.LocalClient) {
+	defer ln.Close()
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -499,7 +553,16 @@ func handleSecretClient(conn net.Conn, lc *tailscale.LocalClient) {
 		return
 	}
 
-	if _, err := conn.Write(masterSecrets); err != nil {
+	secretsMu.Lock()
+	payload := masterSecrets
+	secretsMu.Unlock()
+
+	if len(payload) == 0 {
+		conn.Write([]byte("ERR: Secrets not available"))
+		return
+	}
+
+	if _, err := conn.Write(payload); err != nil {
 		log.Printf("SERVE_SECRETS: write error: %v", err)
 	}
 }

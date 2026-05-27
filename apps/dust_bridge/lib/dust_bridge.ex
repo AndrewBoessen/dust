@@ -84,6 +84,24 @@ defmodule Dust.Bridge do
   end
 
   @doc """
+  Tell the Go sidecar to stop serving secrets to joining peers.
+
+  Closes the key-exchange listener on port 9473, wipes the cached master key
+  and OTP cookie, and revokes any outstanding invite tokens. Called by
+  `Dust.Core.KeyStore.lock/0` so that a locked node cannot leak the master
+  key over Tailscale.
+  """
+  @impl true
+  @spec stop_serving_secrets() :: :ok | {:error, term()}
+  def stop_serving_secrets do
+    case send_command("STOP_SECRETS") do
+      {:ok, <<"OK:", _::binary>>} -> :ok
+      {:ok, <<"ERR: ", reason::binary>>} -> {:error, reason}
+      error -> error
+    end
+  end
+
+  @doc """
   Generates a one-time secure token and registers it with the sidecar.
 
   The token is registered internally in the sidecar's invite map with a

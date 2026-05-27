@@ -171,6 +171,7 @@ defmodule Dust.Core.KeyStore do
   end
 
   def handle_call(:lock, _from, state) do
+    revoke_secrets()
     Logger.info("KeyStore: locked")
     {:reply, :ok, %{state | key: nil, password: nil, status: :locked}}
   end
@@ -214,6 +215,20 @@ defmodule Dust.Core.KeyStore do
           "KeyStore: #{bridge_module()} is not available to serve secrets: #{inspect(err)}"
         )
     end
+  end
+
+  @spec revoke_secrets() :: :ok
+  defp revoke_secrets do
+    try do
+      bridge_module().stop_serving_secrets()
+    rescue
+      err ->
+        Logger.warning(
+          "KeyStore: #{bridge_module()} is not available to revoke secrets: #{inspect(err)}"
+        )
+    end
+
+    :ok
   end
 
   @spec bridge_module() :: module()

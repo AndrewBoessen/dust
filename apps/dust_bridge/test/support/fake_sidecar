@@ -80,6 +80,10 @@ defmodule FakeSidecar do
     "OK:serving"
   end
 
+  defp handle("STOP_SECRETS") do
+    "OK:revoked"
+  end
+
   defp handle("INVITE_CREATE " <> _token) do
     "OK:registered"
   end

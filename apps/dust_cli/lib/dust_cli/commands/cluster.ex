@@ -63,6 +63,11 @@ defmodule Dust.CLI.Commands.Cluster do
         IO.puts("")
         0
 
+      {423, {:ok, %{"error" => "keystore_locked"}}} ->
+        Formatter.error("Key store is locked")
+        IO.puts("  Run 'dustctl unlock' before issuing an invite.")
+        1
+
       {_, {:ok, %{"error" => reason}}} ->
         Formatter.error("Failed to create invite: #{reason}")
         1
