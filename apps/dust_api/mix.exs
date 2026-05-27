@@ -34,7 +34,8 @@ defmodule Dust.Api.MixProject do
       {:dust_core, in_umbrella: true},
       {:dust_mesh, in_umbrella: true},
       {:dust_bridge, in_umbrella: true},
-      {:dust_utilities, in_umbrella: true}
+      {:dust_utilities, in_umbrella: true},
+      {:mox, "~> 1.0", only: :test}
     ]
   end
 end

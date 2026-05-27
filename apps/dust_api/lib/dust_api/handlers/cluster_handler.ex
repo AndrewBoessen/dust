@@ -32,19 +32,20 @@ defmodule Dust.Api.Handlers.ClusterHandler do
   @doc "Create an invite token for a new node to join the cluster."
   @spec create_invite(Plug.Conn.t()) :: Plug.Conn.t()
   def create_invite(conn) do
-    case bridge_module().create_invite() do
-      {:ok, token} ->
-        # Get this node's Tailscale IP for the joiner to connect to
-        self_ip =
-          node()
-          |> to_string()
-          |> String.split("@")
-          |> List.last()
+    bridge = bridge_module()
 
-        json_response(conn, 201, %{
-          token: token,
-          join_ip: self_ip,
-          message: "Use this token and IP to join the cluster"
+    with {:ok, %{self_ip: self_ip}} when self_ip != "" <- bridge.auth_status(),
+         {:ok, token} <- bridge.create_invite() do
+      json_response(conn, 201, %{
+        token: token,
+        join_ip: self_ip,
+        message: "Use this token and IP to join the cluster"
+      })
+    else
+      {:ok, %{self_ip: ""}} ->
+        json_response(conn, 503, %{
+          error: "tailscale_not_ready",
+          message: "Node has no Tailscale IP yet; cannot issue invite"
         })
 
       {:error, reason} ->
