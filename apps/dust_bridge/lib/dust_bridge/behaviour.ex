@@ -20,11 +20,15 @@ defmodule Dust.Bridge.Behaviour do
   @callback create_invite() :: {:ok, token :: String.t()} | {:error, term()}
 
   @doc """
-  Returns the peers visible to the sidecar as `"name@ip"` strings, one per
-  peer. The `name` is the peer's node-name prefix and `ip` is its Tailscale
-  IP — together they form a valid Erlang node identifier.
+  Returns the names of all peer dust nodes visible to the sidecar. Each
+  entry is just the peer's chosen short name (no IP).
   """
   @callback get_peers() :: {:ok, [String.t()]} | {:error, term()}
+
+  @doc """
+  Resolves a peer's chosen node name to its current Tailscale IP.
+  """
+  @callback resolve_peer(name :: String.t()) :: {:ok, String.t()} | {:error, term()}
 
   @doc "Opens a local TCP proxy to `target_ip:target_port` over Tailscale."
   @callback proxy(target_ip :: String.t(), target_port :: integer()) ::

@@ -4,15 +4,16 @@ defmodule Dust.Bridge.Discovery do
   cluster.
 
   Uses `Dust.Bridge.get_peers/0` to query the Go `tsnet_sidecar` for the
-  list of peers on the same Tailnet. Each entry is a `"name@ip"` string
-  identifying a peer; this module calls `Node.connect/1` for any peer not
-  already in `Node.list/0`. Connection triggers the custom EPMD module
-  (`Dust.Bridge.EPMD`) which proxies Erlang distribution traffic through
-  the Tailscale tunnel.
+  names of peers on the same Tailnet, then calls `Node.connect/1` for any
+  peer not already in `Node.list/0`. Each peer is identified by its
+  chosen short name; this module builds the node atom as
+  `:"dust@<name>"`. The custom EPMD module (`Dust.Bridge.EPMD`) resolves
+  the name to a Tailscale IP and proxies the distribution traffic.
 
-  Because each peer's node-name prefix is recovered from its Tailscale
-  hostname, peers can run under different node names (configured via
-  `dustctl init`) and still discover each other.
+  Because routing is name-based, peers running under different node
+  names (configured via `dustctl init`) discover each other correctly
+  and the Erlang handshake's name comparison succeeds: both sides agree
+  on the atom `dust@<name>` without encoding any IP.
 
   The default poll interval is 15 seconds.
   """
@@ -52,13 +53,13 @@ defmodule Dust.Bridge.Discovery do
   # ── Private ──────────────────────────────────────────────────────────────
 
   @spec connect_to_peers([String.t()]) :: :ok
-  defp connect_to_peers(peers) do
-    self_node = to_string(Node.self())
+  defp connect_to_peers(peer_names) do
+    self_name = Dust.Utilities.Config.node_name()
 
-    peers
-    |> Enum.reject(&(&1 == self_node))
-    |> Enum.each(fn entry ->
-      peer_node = String.to_atom(entry)
+    peer_names
+    |> Enum.reject(&(&1 == self_name or &1 == ""))
+    |> Enum.each(fn name ->
+      peer_node = String.to_atom("dust@" <> name)
 
       if peer_node not in Node.list() do
         Logger.debug("Discovery: Attempting to connect to #{peer_node}")

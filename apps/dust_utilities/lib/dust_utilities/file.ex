@@ -110,13 +110,27 @@ defmodule Dust.Utilities.File do
     Path.join(ts_state_dir(prefix), @secrets_file)
   end
 
-  # Derives a node-unique prefix from `Node.self()` for path isolation
-  # in local dev clusters (e.g. "dust1" from :"dust1@127.0.0.1").
+  # Returns the node's chosen unique name (from Config) for path isolation
+  # across nodes. Falls back to the host portion of `Node.self()` and then
+  # to a default if Config isn't ready yet.
   @spec node_prefix() :: String.t()
   defp node_prefix do
+    case safe_node_name() do
+      name when is_binary(name) and name != "" -> name
+      _ -> node_name_from_self() || @default_node_name
+    end
+  end
+
+  defp safe_node_name do
+    Dust.Utilities.Config.node_name()
+  rescue
+    _ -> nil
+  end
+
+  defp node_name_from_self do
     Node.self()
     |> to_string()
     |> String.split("@")
-    |> List.first() || @default_node_name
+    |> List.last()
   end
 end

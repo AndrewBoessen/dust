@@ -42,9 +42,21 @@ defmodule Dust.BridgeTest do
   # ── get_peers/0 ─────────────────────────────────────────────────────────
 
   describe "get_peers/0" do
-    test "parses a comma-separated list of name@ip entries from OK response" do
+    test "parses a comma-separated list of peer names from OK response" do
       assert {:ok, peers} = Dust.Bridge.get_peers()
-      assert peers == ["dust@100.64.0.1", "alice@100.64.0.2", "bob@100.64.0.3"]
+      assert peers == ["dust", "alice", "bob"]
+    end
+  end
+
+  # ── resolve_peer/1 ──────────────────────────────────────────────────────
+
+  describe "resolve_peer/1" do
+    test "returns the Tailscale IP for a known peer" do
+      assert {:ok, "100.64.0.2"} = Dust.Bridge.resolve_peer("alice")
+    end
+
+    test "returns an error when the peer is not found" do
+      assert {:error, "peer not found"} = Dust.Bridge.resolve_peer("missing")
     end
   end
 

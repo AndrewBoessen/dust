@@ -9,14 +9,21 @@ defmodule Dust.Bridge.EPMD do
 
   ## How it works
 
-  When `net_kernel` needs to connect to a remote node it calls
-  `address_please/3` (or `port_please/3` on older OTP releases). This
-  module responds by:
+  Dust node atoms have the form `dust@<name>` where `<name>` is the
+  peer's chosen short name (not an IP). When `net_kernel` needs to
+  connect to a remote node it calls `address_please/3` with the host
+  portion of that atom. This module then:
 
-  1. Asking `Dust.Bridge.proxy/2` to dial the peer's distribution port
-     (9000) over Tailscale.
-  2. Returning the resulting **local** proxy port so that `net_kernel`
+  1. Asks `Dust.Bridge.resolve_peer/1` to translate the name into the
+     peer's current Tailscale IP (via the sidecar's view of the tailnet).
+  2. Asks `Dust.Bridge.proxy/2` to open a local TCP proxy that tunnels
+     to that IP's distribution port (9000) over Tailscale.
+  3. Returns the resulting **local** proxy port so that `net_kernel`
      connects to `127.0.0.1:<proxy_port>` transparently.
+
+  Decoupling the atom from the IP lets the handshake names match on both
+  sides — both peers see and announce `dust@<name>` — while still routing
+  over the actual tailnet.
 
   ## Configuration
 
@@ -42,14 +49,13 @@ defmodule Dust.Bridge.EPMD do
   @spec address_please(charlist(), charlist(), :inet | :inet6) ::
           {:ok, :inet.ip_address(), non_neg_integer(), 1..5} | {:error, :address}
   def address_please(_name, host, _address_family) do
-    peer_ip = to_string(host)
+    peer_name = to_string(host)
 
-    case Dust.Bridge.proxy(peer_ip, @dist_port) do
-      {:ok, local_port} ->
-        {:ok, {127, 0, 0, 1}, local_port, 5}
-
-      _error ->
-        {:error, :address}
+    with {:ok, peer_ip} <- Dust.Bridge.resolve_peer(peer_name),
+         {:ok, local_port} <- Dust.Bridge.proxy(peer_ip, @dist_port) do
+      {:ok, {127, 0, 0, 1}, local_port, 5}
+    else
+      _ -> {:error, :address}
     end
   end
 
@@ -62,14 +68,13 @@ defmodule Dust.Bridge.EPMD do
   @spec port_please(charlist(), charlist(), timeout()) ::
           {:port, non_neg_integer(), 1..5}
   def port_please(_name, host, _timeout \\ 5000) do
-    peer_ip = to_string(host)
+    peer_name = to_string(host)
 
-    case Dust.Bridge.proxy(peer_ip, @dist_port) do
-      {:ok, local_port} ->
-        {:port, local_port, 5}
-
-      _error ->
-        {:port, 0, 5}
+    with {:ok, peer_ip} <- Dust.Bridge.resolve_peer(peer_name),
+         {:ok, local_port} <- Dust.Bridge.proxy(peer_ip, @dist_port) do
+      {:port, local_port, 5}
+    else
+      _ -> {:port, 0, 5}
     end
   end
 

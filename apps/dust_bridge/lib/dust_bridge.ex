@@ -103,26 +103,42 @@ defmodule Dust.Bridge do
   end
 
   @doc """
-  Gets all peer node identifiers from the tsnet sidecar.
+  Returns the names of all peer dust nodes visible to the sidecar.
 
-  Each entry is a `"name@ip"` string suitable for passing to
-  `String.to_atom/1` and `Node.connect/1`. The `name` portion is the
-  peer's chosen node-name prefix (recovered from its Tailscale hostname);
-  the `ip` portion is the peer's Tailscale IP.
+  Each entry is the peer's chosen node name (recovered from its Tailscale
+  hostname). Callers route to a peer by translating the name into a node
+  atom (`:"dust@<name>"`) — the EPMD module uses `resolve_peer/1` to turn
+  the name into a routable Tailscale IP at connection time.
   """
   @impl true
   @spec get_peers() :: {:ok, [String.t()]} | {:error, term()}
   def get_peers() do
     case send_command("PEERS") do
-      {:ok, <<"OK:", entries::binary>>} ->
-        entries_list = String.split(entries, ",", trim: true)
-        {:ok, entries_list}
+      {:ok, <<"OK:", names::binary>>} ->
+        {:ok, String.split(names, ",", trim: true)}
 
       {:ok, <<"ERR: ", reason::binary>>} ->
         {:error, reason}
 
       error ->
         error
+    end
+  end
+
+  @doc """
+  Resolves a peer's chosen node name to its current Tailscale IP.
+
+  Looks up the peer whose Tailscale hostname is `dust-node-<name>` and
+  returns its first Tailscale IP. Used by `Dust.Bridge.EPMD` to turn a
+  node atom like `:"dust@alice"` into a proxy target.
+  """
+  @impl true
+  @spec resolve_peer(String.t()) :: {:ok, String.t()} | {:error, term()}
+  def resolve_peer(name) when is_binary(name) do
+    case send_command("RESOLVE " <> name) do
+      {:ok, <<"OK:", ip::binary>>} -> {:ok, String.trim(ip)}
+      {:ok, <<"ERR: ", reason::binary>>} -> {:error, reason}
+      error -> error
     end
   end
 
@@ -198,13 +214,12 @@ defmodule Dust.Bridge do
     sidecar = Keyword.get(opts, :sidecar_path, sidecar_path())
     state_dir = Keyword.get(opts, :ts_state_dir, Dust.Utilities.File.ts_state_dir())
 
-    node_prefix =
-      Node.self()
-      |> to_string()
-      |> String.split("@")
-      |> List.first() || "unknown"
-
-    hostname = System.get_env("TS_HOSTNAME") || "dust-node-#{node_prefix}"
+    # The Tailscale hostname encodes the node's chosen name so peers can
+    # discover each other by name. Read directly from Config rather than
+    # parsing Node.self(), since the node atom is "dust@<name>" and we
+    # want the host portion, not the constant "dust" prefix.
+    hostname =
+      System.get_env("TS_HOSTNAME") || "dust-node-#{Dust.Utilities.Config.node_name()}"
 
     ts_tags =
       Keyword.get(

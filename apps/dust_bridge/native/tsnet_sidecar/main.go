@@ -166,10 +166,10 @@ func handleCommand(srv *tsnet.Server, cmd []byte) []byte {
 		return []byte("OK: invite created")
 
 	case "PEERS":
-		// Response format: "OK:name1@ip1,name2@ip2,..."
-		// `name` is the peer's node-name prefix, recovered by stripping the
-		// "dust-node-" hostname prefix we set in TS_HOSTNAME. Falls back to
-		// "dust" if the prefix is missing (e.g. legacy peers).
+		// Response format: "OK:name1,name2,..." — bare node names only.
+		// Names are recovered from each peer's Tailscale hostname by stripping
+		// the "dust-node-" prefix. Peers are routed to by name; callers use
+		// RESOLVE to translate a name into its current Tailscale IP.
 		lc, err := srv.LocalClient()
 		if err != nil {
 			return []byte(fmt.Sprintf("ERR: %v", err))
@@ -178,15 +178,41 @@ func handleCommand(srv *tsnet.Server, cmd []byte) []byte {
 		if err != nil {
 			return []byte(fmt.Sprintf("ERR: %v", err))
 		}
-		var entries []string
+		var names []string
 		for _, peer := range st.Peer {
 			if hasMatchingTagView(peer.Tags) && len(peer.TailscaleIPs) > 0 {
-				name := nodeNameFromHostname(peer.HostName)
-				ip := peer.TailscaleIPs[0].String()
-				entries = append(entries, name+"@"+ip)
+				names = append(names, nodeNameFromHostname(peer.HostName))
 			}
 		}
-		return []byte("OK:" + strings.Join(entries, ","))
+		return []byte("OK:" + strings.Join(names, ","))
+
+	case "RESOLVE":
+		// RESOLVE <name> — returns the Tailscale IP of the peer whose
+		// hostname is "dust-node-<name>". Used by the EPMD module to turn
+		// a peer node atom (e.g. dust@alice) into a routable address.
+		if len(parts) < 2 {
+			return []byte("ERR: RESOLVE requires name")
+		}
+		name := strings.TrimSpace(parts[1])
+		if name == "" {
+			return []byte("ERR: RESOLVE requires name")
+		}
+		hostname := "dust-node-" + name
+		lc, err := srv.LocalClient()
+		if err != nil {
+			return []byte(fmt.Sprintf("ERR: %v", err))
+		}
+		st, err := lc.Status(context.Background())
+		if err != nil {
+			return []byte(fmt.Sprintf("ERR: %v", err))
+		}
+		for _, peer := range st.Peer {
+			if peer.HostName == hostname && hasMatchingTagView(peer.Tags) &&
+				len(peer.TailscaleIPs) > 0 {
+				return []byte("OK:" + peer.TailscaleIPs[0].String())
+			}
+		}
+		return []byte("ERR: peer not found")
 
 	case "PROXY":
 		// PROXY <targetIP> <targetPort>

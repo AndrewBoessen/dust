@@ -91,10 +91,14 @@ defmodule Dust.Utilities.Config do
   # root_dir_id           — UUID of the root filesystem directory.
   #                         Set automatically during setup or can be empty.
   #
-  # node_name             — Short name used as the prefix of this node's Erlang
-  #                         node atom (e.g. "dust" → dust@<ip>). The Erlang VM
-  #                         reads this value at boot, so changes only take
-  #                         effect after a daemon restart.
+  # node_name             — Unique short name used as the host portion of
+  #                         this node's Erlang node atom (e.g. "alice" →
+  #                         dust@alice) and as the suffix of its Tailscale
+  #                         hostname (dust-node-alice). Peers route to each
+  #                         other by name through the bridge sidecar, so this
+  #                         value MUST be unique across the cluster. The
+  #                         Erlang VM reads it at boot — changes take effect
+  #                         after a daemon restart.
   #
   """
 
@@ -143,7 +147,11 @@ defmodule Dust.Utilities.Config do
   @spec root_dir_id() :: String.t()
   def root_dir_id, do: get(:root_dir_id)
 
-  @doc "Short name used as the prefix of this node's Erlang node atom."
+  @doc """
+  Unique short name for this node, used as the host portion of its Erlang
+  node atom (`dust@<name>`) and the suffix of its Tailscale hostname
+  (`dust-node-<name>`). Must be unique across the cluster.
+  """
   @spec node_name() :: String.t()
   def node_name, do: get(:node_name)
 

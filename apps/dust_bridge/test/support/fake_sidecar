@@ -49,11 +49,23 @@ defmodule FakeSidecar do
   # ── Command handlers ───────────────────────────────────────────────
 
   defp handle("PEERS") do
-    "OK:dust@100.64.0.1,alice@100.64.0.2,bob@100.64.0.3"
+    "OK:dust,alice,bob"
   end
 
   defp handle("PEERS_EMPTY") do
     "OK:"
+  end
+
+  defp handle("RESOLVE alice") do
+    "OK:100.64.0.2"
+  end
+
+  defp handle("RESOLVE missing") do
+    "ERR: peer not found"
+  end
+
+  defp handle("RESOLVE " <> _name) do
+    "OK:100.64.0.99"
   end
 
   defp handle("EXPOSE " <> _port) do
