@@ -76,7 +76,7 @@ defmodule Dust.Ui.FileTable do
               </.link>
             </td>
             <td class="px-4 py-2 text-right text-sm text-zinc-500">—</td>
-            <td class="px-4 py-2 text-sm text-zinc-500">{Format.relative_time(dir[:created_at])}</td>
+            <td class="px-4 py-2 text-sm text-zinc-500">{Format.relative_time(Map.get(dir, :created_at))}</td>
             <td class="px-4 py-2 text-right text-sm">
               <div class="inline-flex gap-3">
                 <button
@@ -129,7 +129,7 @@ defmodule Dust.Ui.FileTable do
             <td class="px-4 py-2 text-right text-sm text-zinc-500">
               {Format.bytes(parse_int(Map.get(file, :size)))}
             </td>
-            <td class="px-4 py-2 text-sm text-zinc-500">{Format.relative_time(file[:created_at])}</td>
+            <td class="px-4 py-2 text-sm text-zinc-500">{Format.relative_time(Map.get(file, :created_at))}</td>
             <td class="px-4 py-2 text-right text-sm">
               <div class="inline-flex gap-3">
                 <.link

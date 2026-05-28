@@ -103,6 +103,9 @@
             pkgs.lz4
             pkgs.bzip2
             pkgs.xz
+
+            # Required by phoenix_live_reload's file_system watcher in dev.
+            pkgs.inotify-tools
           ];
 
           shellHook = ''

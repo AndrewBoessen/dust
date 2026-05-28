@@ -7,6 +7,7 @@ defmodule Dust.MixProject do
       name: "Dust",
       version: "0.1.5",
       start_permanent: Mix.env() == :prod,
+      listeners: [Phoenix.CodeReloader],
       deps: deps(),
       releases: releases()
     ]
