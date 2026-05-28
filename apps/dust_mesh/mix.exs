@@ -29,6 +29,7 @@ defmodule Dust.Mesh.MixProject do
       {:delta_crdt, "~> 0.6.5"},
       {:cubdb, "~> 2.0.2"},
       {:dust_core, in_umbrella: true},
+      {:dust_utilities, in_umbrella: true},
       {:mox, "~> 1.0", only: :test}
     ]
   end
