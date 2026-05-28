@@ -26,6 +26,8 @@ defmodule Dust.Ui.FilesLive do
         page_title: "Files",
         modal: nil,
         rename_target: nil,
+        move_target: nil,
+        move_candidates: [],
         progress: %{},
         flash_error: nil
       )
@@ -91,7 +93,9 @@ defmodule Dust.Ui.FilesLive do
     do: {:noreply, assign(socket, modal: :mkdir)}
 
   def handle_event("close_modal", _params, socket),
-    do: {:noreply, assign(socket, modal: nil, rename_target: nil)}
+    do:
+      {:noreply,
+       assign(socket, modal: nil, rename_target: nil, move_target: nil, move_candidates: [])}
 
   def handle_event("mkdir_submit", %{"name" => name}, socket) do
     case FS.mkdir(socket.assigns.current_dir_id, String.trim(name)) do
@@ -140,6 +144,52 @@ defmodule Dust.Ui.FilesLive do
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Rename failed: #{inspect(reason)}")}
+    end
+  end
+
+  def handle_event(
+        "open_move",
+        %{"id" => id, "type" => type, "name" => name},
+        socket
+      ) do
+    target = %{id: id, type: type, name: name}
+    candidates = move_candidates(target, socket.assigns.current_dir_id)
+
+    {:noreply, assign(socket, modal: :move, move_target: target, move_candidates: candidates)}
+  end
+
+  def handle_event("move_submit", %{"dest" => dest_id}, socket) do
+    target = socket.assigns.move_target
+
+    result =
+      case target.type do
+        "file" -> FS.move_file(target.id, dest_id, target.name)
+        "dir" -> FS.move_dir(target.id, dest_id, target.name)
+      end
+
+    case result do
+      :ok ->
+        {:noreply,
+         socket
+         |> assign(modal: nil, move_target: nil, move_candidates: [])
+         |> put_flash(:info, "Moved.")
+         |> refresh_listing()}
+
+      {:error, :name_conflict} ->
+        {:noreply,
+         put_flash(socket, :error, "A #{target.type} with that name already exists there.")}
+
+      {:error, :cycle} ->
+        {:noreply, put_flash(socket, :error, "Cannot move a directory into itself.")}
+
+      {:error, :cannot_move_root} ->
+        {:noreply, put_flash(socket, :error, "Cannot move the root directory.")}
+
+      {:error, :dest_not_found} ->
+        {:noreply, put_flash(socket, :error, "Destination no longer exists.")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Move failed: #{inspect(reason)}")}
     end
   end
 
@@ -233,6 +283,34 @@ defmodule Dust.Ui.FilesLive do
         </form>
       </.modal>
 
+      <.modal :if={@modal == :move} on_close="close_modal" title={"Move #{@move_target.type}"}>
+        <p class="text-sm text-zinc-500">
+          Move <span class="font-medium text-zinc-900">{@move_target.name}</span> to:
+        </p>
+        <%= if @move_candidates == [] do %>
+          <p class="mt-4 text-sm text-zinc-500">No eligible destinations.</p>
+        <% else %>
+          <ul class="mt-3 max-h-80 space-y-1 overflow-y-auto rounded-md border border-zinc-200">
+            <li :for={c <- @move_candidates}>
+              <button
+                type="button"
+                phx-click="move_submit"
+                phx-value-dest={c.id}
+                class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-zinc-50"
+              >
+                <span class="text-zinc-400">📁</span>
+                <span class="text-zinc-700">{c.path}</span>
+              </button>
+            </li>
+          </ul>
+        <% end %>
+        <div class="mt-4 flex justify-end">
+          <button type="button" phx-click="close_modal" class="text-sm text-zinc-500 hover:text-zinc-900">
+            Cancel
+          </button>
+        </div>
+      </.modal>
+
       <.modal :if={@modal == :rename} on_close="close_modal" title={"Rename #{@rename_target.type}"}>
         <form phx-submit="rename_submit" class="space-y-4">
           <.input
@@ -321,6 +399,47 @@ defmodule Dust.Ui.FilesLive do
       dir ->
         crumb = %{id: id, name: Map.get(dir, :name) || "root"}
         walk_up(Map.get(dir, :parent_id), [crumb | acc])
+    end
+  end
+
+  # Returns destination directories the user may move `target` into.
+  #
+  # Always excludes the current parent (no-op move). For a directory target
+  # also excludes the directory itself and every descendant to prevent
+  # cycles. Each returned entry has `:id` and `:path` ("root / a / b").
+  defp move_candidates(target, current_dir_id) do
+    dirs = FS.all_dirs()
+    excluded = excluded_ids(target, dirs) |> MapSet.put(current_dir_id)
+
+    dirs
+    |> Enum.reject(fn {id, _} -> MapSet.member?(excluded, id) end)
+    |> Enum.map(fn {id, _} -> %{id: id, path: dir_path(id, dirs)} end)
+    |> Enum.sort_by(& &1.path)
+  end
+
+  defp excluded_ids(%{type: "dir", id: dir_id}, dirs) do
+    descendants(dir_id, dirs) |> MapSet.put(dir_id)
+  end
+
+  defp excluded_ids(_target, _dirs), do: MapSet.new()
+
+  defp descendants(dir_id, dirs) do
+    children =
+      for {id, entry} <- dirs, Map.get(entry, :parent_id) == dir_id, into: MapSet.new(), do: id
+
+    Enum.reduce(children, children, fn child, acc ->
+      MapSet.union(acc, descendants(child, dirs))
+    end)
+  end
+
+  defp dir_path(id, dirs), do: dir_path(id, dirs, [])
+
+  defp dir_path(nil, _dirs, acc), do: Enum.join(acc, " / ")
+
+  defp dir_path(id, dirs, acc) do
+    case Map.get(dirs, id) do
+      nil -> Enum.join(acc, " / ")
+      entry -> dir_path(Map.get(entry, :parent_id), dirs, [Map.get(entry, :name) || "root" | acc])
     end
   end
 

@@ -91,6 +91,16 @@ defmodule Dust.Ui.FileTable do
                 </button>
                 <button
                   type="button"
+                  phx-click="open_move"
+                  phx-value-id={dir.id}
+                  phx-value-type="dir"
+                  phx-value-name={dir.name}
+                  class="text-zinc-500 hover:text-zinc-900"
+                >
+                  Move
+                </button>
+                <button
+                  type="button"
                   phx-click="rm"
                   phx-value-id={dir.id}
                   phx-value-type="dir"
@@ -147,6 +157,16 @@ defmodule Dust.Ui.FileTable do
                   class="text-zinc-500 hover:text-zinc-900"
                 >
                   Rename
+                </button>
+                <button
+                  type="button"
+                  phx-click="open_move"
+                  phx-value-id={file.id}
+                  phx-value-type="file"
+                  phx-value-name={file.name}
+                  class="text-zinc-500 hover:text-zinc-900"
+                >
+                  Move
                 </button>
                 <button
                   type="button"

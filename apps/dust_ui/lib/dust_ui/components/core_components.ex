@@ -128,16 +128,9 @@ defmodule Dust.Ui.CoreComponents do
 
   def modal(assigns) do
     ~H"""
-    <div
-      id="modal-overlay"
-      class="fixed inset-0 z-40 flex items-center justify-center bg-zinc-900/40"
-      phx-click={@on_close}
-    >
-      <div
-        class="w-full max-w-md rounded-lg bg-white p-6 shadow-xl"
-        phx-click-away={@on_close}
-        onclick="event.stopPropagation()"
-      >
+    <div id="modal-overlay" class="fixed inset-0 z-40 flex items-center justify-center">
+      <div class="absolute inset-0 bg-zinc-900/40" phx-click={@on_close}></div>
+      <div class="relative z-10 w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
         <div class="mb-4 flex items-center justify-between">
           <h3 :if={@title} class="text-base font-semibold text-zinc-900">{@title}</h3>
           <button
