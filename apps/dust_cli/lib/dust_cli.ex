@@ -46,6 +46,9 @@ defmodule Dust.CLI do
       gc stats              Show garbage collection statistics
       gc sweep              Trigger a manual GC sweep
 
+      ui open               Open the web UI in your browser
+      ui status             Show the web UI URL and reachability
+
       help                  Show this help message
       version               Show version
 
@@ -62,7 +65,7 @@ defmodule Dust.CLI do
   @version "0.1.5"
 
   # Commands that DO NOT require Tailscale connectivity
-  @no_network_required ~w(init status auth daemon unlock lock config help version)
+  @no_network_required ~w(init status auth daemon unlock lock config help version ui)
 
   @doc false
   def run(args) do
@@ -197,6 +200,8 @@ defmodule Dust.CLI do
 
   defp dispatch({config, ["gc" | args]}), do: Commands.Gc.run(config, args)
 
+  defp dispatch({config, ["ui" | args]}), do: Commands.Ui.run(config, args)
+
   defp dispatch({_config, ["version" | _]}) do
     IO.puts("dustctl #{@version}")
     0
@@ -254,6 +259,10 @@ defmodule Dust.CLI do
       {"Garbage Collection", [
         {"gc stats", "Show garbage collection statistics"},
         {"gc sweep", "Trigger a manual GC sweep"}
+      ]},
+      {"Web UI", [
+        {"ui open", "Open the web UI in your browser"},
+        {"ui status", "Show the web UI URL and reachability"}
       ]},
       {"Other", [
         {"help", "Show this help message"},

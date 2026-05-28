@@ -1,0 +1,9 @@
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
+
+/* App-wide tweaks live here. */
+html,
+body {
+  background-color: rgb(250 250 250);
+}

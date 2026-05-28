@@ -11,23 +11,50 @@ defmodule Dust.Ui.MixProject do
       lockfile: "../../mix.lock",
       elixir: "~> 1.19",
       start_permanent: Mix.env() == :prod,
+      aliases: aliases(),
       deps: deps()
     ]
   end
 
-  # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger]
+      extra_applications: [:logger, :runtime_tools],
+      mod: {Dust.Ui.Application, []}
     ]
   end
 
-  # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      # {:dep_from_hexpm, "~> 0.3.0"},
-      # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"},
-      # {:sibling_app_in_umbrella, in_umbrella: true}
+      {:phoenix, "~> 1.8"},
+      {:phoenix_live_view, "~> 1.0"},
+      {:phoenix_live_reload, "~> 1.5", only: :dev},
+      {:phoenix_html, "~> 4.1"},
+      {:phoenix_pubsub, "~> 2.1"},
+      {:bandit, "~> 1.6"},
+      {:plug, "~> 1.16"},
+      {:jason, "~> 1.4"},
+      {:telemetry_metrics, "~> 1.0"},
+      {:telemetry_poller, "~> 1.1"},
+      {:esbuild, "~> 0.8", runtime: Mix.env() == :dev},
+      {:tailwind, "~> 0.2", runtime: Mix.env() == :dev},
+      {:floki, ">= 0.30.0", only: :test},
+      {:dust_daemon, in_umbrella: true},
+      {:dust_core, in_umbrella: true},
+      {:dust_mesh, in_umbrella: true},
+      {:dust_bridge, in_umbrella: true},
+      {:dust_utilities, in_umbrella: true}
+    ]
+  end
+
+  defp aliases do
+    [
+      "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
+      "assets.build": ["tailwind dust_ui", "esbuild dust_ui"],
+      "assets.deploy": [
+        "tailwind dust_ui --minify",
+        "esbuild dust_ui --minify",
+        "phx.digest"
+      ]
     ]
   end
 end

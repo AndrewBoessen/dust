@@ -58,6 +58,17 @@ defmodule Dust.Daemon.DiskManager do
     end
   end
 
+  @doc """
+  Current size of the local shard store on disk, in bytes.
+
+  Walks the storage backend directory tree. Cheap enough to call on a
+  dashboard refresh tick (10s); avoid hot paths.
+  """
+  @spec usage_bytes() :: non_neg_integer()
+  def usage_bytes do
+    dir_size(Dust.Utilities.File.storage_db_dir())
+  end
+
   @spec dir_size(String.t()) :: non_neg_integer()
   defp dir_size(path) do
     case File.ls(path) do

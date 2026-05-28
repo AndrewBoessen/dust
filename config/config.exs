@@ -9,14 +9,38 @@
 # move said applications out of the umbrella.
 import Config
 
-# Sample configuration:
-#
-#     config :logger, :default_handler,
-#       level: :info
-#
-#     config :logger, :default_formatter,
-#       format: "$date $time [$level] $metadata$message\n",
-#       metadata: [:user_id]
-#
+# ── Web UI (Phoenix LiveView) ──────────────────────────────────────────
+config :dust_ui, Dust.Ui.Endpoint,
+  adapter: Bandit.PhoenixAdapter,
+  url: [host: "localhost"],
+  http: [ip: {127, 0, 0, 1}, port: 4885],
+  render_errors: [
+    formats: [html: Dust.Ui.ErrorHTML, json: Dust.Ui.ErrorJSON],
+    layout: false
+  ],
+  pubsub_server: Dust.Ui.PubSub,
+  live_view: [signing_salt: "dust_ui_live"]
+
+config :phoenix, :json_library, Jason
+
+config :esbuild,
+  version: "0.21.5",
+  dust_ui: [
+    args:
+      ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets --external:/fonts/* --external:/images/*),
+    cd: Path.expand("../apps/dust_ui/assets", __DIR__),
+    env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
+  ]
+
+config :tailwind,
+  version: "3.4.3",
+  dust_ui: [
+    args: ~w(
+      --config=tailwind.config.js
+      --input=css/app.css
+      --output=../priv/static/assets/app.css
+    ),
+    cd: Path.expand("../apps/dust_ui/assets", __DIR__)
+  ]
 
 import_config "#{config_env()}.exs"

@@ -10,13 +10,21 @@ api_port =
     String.to_integer(port_str)
   end
 
+ui_port =
+  if port_str = System.get_env("DUST_UI_PORT") do
+    String.to_integer(port_str)
+  end
+
 api_bind = System.get_env("DUST_API_BIND")
+ui_bind = System.get_env("DUST_UI_BIND")
 persist_dir = System.get_env("DUST_DATA_DIR")
 
 runtime_overrides =
   %{}
   |> then(fn m -> if api_port, do: Map.put(m, :api_port, api_port), else: m end)
   |> then(fn m -> if api_bind, do: Map.put(m, :api_bind, api_bind), else: m end)
+  |> then(fn m -> if ui_port, do: Map.put(m, :ui_port, ui_port), else: m end)
+  |> then(fn m -> if ui_bind, do: Map.put(m, :ui_bind, ui_bind), else: m end)
   |> then(fn m -> if persist_dir, do: Map.put(m, :persist_dir, persist_dir), else: m end)
 
 if map_size(runtime_overrides) > 0 do

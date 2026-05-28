@@ -41,6 +41,8 @@ defmodule Dust.Utilities.Config do
     max_reconstruct_per_sweep: 5,
     api_port: 4884,
     api_bind: "127.0.0.1",
+    ui_port: 4885,
+    ui_bind: "127.0.0.1",
     root_dir_id: "",
     node_name: "dust"
   }
@@ -53,6 +55,8 @@ defmodule Dust.Utilities.Config do
     :max_reconstruct_per_sweep,
     :api_port,
     :api_bind,
+    :ui_port,
+    :ui_bind,
     :root_dir_id,
     :node_name
   ]
@@ -86,6 +90,12 @@ defmodule Dust.Utilities.Config do
   # api_port              — TCP port for the local HTTP API. Default: 4884.
   #
   # api_bind              — IP address the HTTP API binds to.
+  #                         Use "127.0.0.1" (default) to restrict to localhost.
+  #
+  # ui_port               — TCP port for the local web UI (Phoenix LiveView).
+  #                         Default: 4885.
+  #
+  # ui_bind               — IP address the web UI binds to.
   #                         Use "127.0.0.1" (default) to restrict to localhost.
   #
   # root_dir_id           — UUID of the root filesystem directory.
@@ -142,6 +152,14 @@ defmodule Dust.Utilities.Config do
   @doc "IP address the HTTP API binds to."
   @spec api_bind() :: String.t()
   def api_bind, do: get(:api_bind)
+
+  @doc "TCP port for the local web UI."
+  @spec ui_port() :: pos_integer()
+  def ui_port, do: get(:ui_port)
+
+  @doc "IP address the web UI binds to."
+  @spec ui_bind() :: String.t()
+  def ui_bind, do: get(:ui_bind)
 
   @doc "UUID of the root directory."
   @spec root_dir_id() :: String.t()
@@ -409,6 +427,8 @@ defmodule Dust.Utilities.Config do
   defp validate_key(:persist_dir, v) when is_binary(v) and v != "", do: :ok
   defp validate_key(:api_port, v) when is_integer(v) and v > 0 and v <= 65535, do: :ok
   defp validate_key(:api_bind, v) when is_binary(v) and v != "", do: :ok
+  defp validate_key(:ui_port, v) when is_integer(v) and v > 0 and v <= 65535, do: :ok
+  defp validate_key(:ui_bind, v) when is_binary(v) and v != "", do: :ok
   defp validate_key(:root_dir_id, v) when is_binary(v), do: :ok
 
   defp validate_key(:node_name, v) when is_binary(v) do

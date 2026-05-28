@@ -31,7 +31,8 @@ defmodule Dust.MixProject do
           dust_storage: :permanent,
           dust_mesh: :permanent,
           dust_daemon: :permanent,
-          dust_api: :permanent
+          dust_api: :permanent,
+          dust_ui: :permanent
         ],
         strip_beams: [keep: ["Docs"]],
         cookie: "dust_cookie"
