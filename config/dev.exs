@@ -18,8 +18,8 @@ config :dust_ui, Dust.Ui.Endpoint,
   ],
   live_reload: [
     patterns: [
-      ~r"priv/static/(?!uploads/).*(js|css|png|jpeg|jpg|gif|svg)$"E,
-      ~r"lib/dust_ui/(controllers|live|components)/.*(ex|heex)$"E
+      Regex.compile!("priv/static/(?!uploads/).*(js|css|png|jpeg|jpg|gif|svg)$"),
+      Regex.compile!("lib/dust_ui/(controllers|live|components)/.*(ex|heex)$")
     ]
   ]
 
