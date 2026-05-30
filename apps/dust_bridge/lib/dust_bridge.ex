@@ -37,6 +37,30 @@ defmodule Dust.Bridge do
   end
 
   @doc """
+  Lazily spawns the Go `tsnet_sidecar` if the bridge was started in
+  deferred mode.
+
+  Deferred mode is used during first-time setup: the bridge boots
+  without touching Tailscale so it doesn't register a hostname using
+  the placeholder `node_name` (`"dust"`). The init flow (CLI `dustctl
+  init` or the Web UI `SetupLive`) calls this after the user has chosen
+  their device name so the sidecar's Tailscale identity is correct on
+  its very first connection.
+
+  Returns `:ok` if the sidecar is now running (or was already running).
+  """
+  @spec start_sidecar() :: :ok | {:error, term()}
+  def start_sidecar do
+    GenServer.call(__MODULE__, :start_sidecar)
+  end
+
+  @doc "True if the sidecar Port is open and accepting commands."
+  @spec sidecar_running?() :: boolean()
+  def sidecar_running? do
+    GenServer.call(__MODULE__, :sidecar_running?)
+  end
+
+  @doc """
   Request the master key and OTP cookie from a peer node over Tailscale using a token.
 
   This command dials a peer node's sidecar (on port 9473) using Tailscale's `tsnet`.
@@ -227,15 +251,75 @@ defmodule Dust.Bridge do
   # ── GenServer callbacks ─────────────────────────────────────────────────
 
   @impl true
-  @spec init(keyword()) :: {:ok, %{port: port()}}
+  @spec init(keyword()) :: {:ok, map()}
   def init(opts) do
+    state = %{port: nil, opts: opts}
+
+    if first_time_setup?() do
+      # No keystore yet: defer sidecar startup so Tailscale doesn't get
+      # registered under the placeholder node_name ("dust"). The init
+      # flow will call `start_sidecar/0` after the user picks a name.
+      Logger.info("Bridge: deferred sidecar startup — waiting for first-time init to complete")
+      {:ok, state}
+    else
+      {:ok, open_sidecar_port(state)}
+    end
+  end
+
+  @impl true
+  def handle_call(:start_sidecar, _from, %{port: nil} = state) do
+    Logger.info("Bridge: opening sidecar port after first-time init")
+    new_state = open_sidecar_port(state)
+
+    # Re-trigger the one-shot port-exposure setup now that the sidecar
+    # is up; the Bridge.Setup task may have already run and failed.
+    _ = Task.start(fn -> Process.sleep(1_000); Dust.Bridge.Setup.run() end)
+
+    {:reply, :ok, new_state}
+  end
+
+  def handle_call(:start_sidecar, _from, state),
+    do: {:reply, :ok, state}
+
+  def handle_call(:sidecar_running?, _from, %{port: port} = state),
+    do: {:reply, is_port(port), state}
+
+  def handle_call({:send_command, _command}, _from, %{port: nil} = state) do
+    {:reply, {:error, :sidecar_deferred}, state}
+  end
+
+  def handle_call({:send_command, command}, _from, %{port: port} = state) do
+    Port.command(port, command)
+
+    receive do
+      {^port, {:data, response}} ->
+        {:reply, {:ok, response}, state}
+
+      {^port, {:exit_status, code}} ->
+        {:reply, {:error, {:sidecar_exited, code}}, state}
+    after
+      30_000 ->
+        {:reply, {:error, :timeout}, state}
+    end
+  end
+
+  @impl true
+  def handle_info({port, {:exit_status, code}}, %{port: port} = state) when is_port(port) do
+    Logger.error("Bridge: Go sidecar exited with code #{code}")
+    {:stop, {:sidecar_exited, code}, state}
+  end
+
+  def handle_info(_msg, state), do: {:noreply, state}
+
+  # ── Private ─────────────────────────────────────────────────────────────
+
+  defp open_sidecar_port(state) do
+    opts = Map.get(state, :opts, [])
     sidecar = Keyword.get(opts, :sidecar_path, sidecar_path())
     state_dir = Keyword.get(opts, :ts_state_dir, Dust.Utilities.File.ts_state_dir())
 
-    # The Tailscale hostname encodes the node's chosen name so peers can
-    # discover each other by name. Read directly from Config rather than
-    # parsing Node.self(), since the node atom is "dust@<name>" and we
-    # want the host portion, not the constant "dust" prefix.
+    # Read node_name at port-open time — for deferred starts this happens
+    # after the user has picked their device name during init.
     hostname =
       System.get_env("TS_HOSTNAME") || "dust-node-#{Dust.Utilities.Config.node_name()}"
 
@@ -258,34 +342,12 @@ defmodule Dust.Bridge do
         ]
       ])
 
-    {:ok, %{port: port}}
+    %{state | port: port}
   end
 
-  @impl true
-  def handle_call({:send_command, command}, _from, %{port: port} = state) do
-    Port.command(port, command)
-
-    receive do
-      {^port, {:data, response}} ->
-        {:reply, {:ok, response}, state}
-
-      {^port, {:exit_status, code}} ->
-        {:reply, {:error, {:sidecar_exited, code}}, state}
-    after
-      30_000 ->
-        {:reply, {:error, :timeout}, state}
-    end
+  defp first_time_setup? do
+    not File.exists?(Dust.Utilities.File.master_key_file())
   end
-
-  @impl true
-  def handle_info({port, {:exit_status, code}}, %{port: port} = state) do
-    Logger.error("Bridge: Go sidecar exited with code #{code}")
-    {:stop, {:sidecar_exited, code}, state}
-  end
-
-  def handle_info(_msg, state), do: {:noreply, state}
-
-  # ── Private ─────────────────────────────────────────────────────────────
 
   @spec sidecar_path() :: Path.t()
   defp sidecar_path do

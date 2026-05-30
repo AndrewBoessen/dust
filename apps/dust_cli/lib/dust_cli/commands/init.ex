@@ -65,7 +65,14 @@ defmodule Dust.CLI.Commands.Init do
 
     IO.puts("")
 
-    # Step 3: Unlock key store
+    # Step 3: Node name (must happen BEFORE Tailscale starts — changing
+    # the name later forces a re-auth because Tailscale identity is keyed
+    # by hostname).
+    setup_node_name(config)
+
+    IO.puts("")
+
+    # Step 4: Unlock key store
     IO.puts("  Checking key store...")
 
     case Client.get(config, "/api/v1/status") do
@@ -105,12 +112,12 @@ defmodule Dust.CLI.Commands.Init do
 
     IO.puts("")
 
-    # Step 4: Node name
-    setup_node_name(config)
+    # Step 5: Bring up Tailscale now that node_name is finalized.
+    start_network(config)
 
     IO.puts("")
 
-    # Step 5: Network setup
+    # Step 6: Network setup
     Formatter.heading("Network Setup")
     IO.puts("")
 
@@ -201,6 +208,21 @@ defmodule Dust.CLI.Commands.Init do
   end
 
   defp valid_node_name?(_), do: false
+
+  # ── Bring up Tailscale ────────────────────────────────────────────────
+
+  defp start_network(config) do
+    IO.puts("  Starting Tailscale…")
+
+    case Client.post(config, "/api/v1/network/start", %{}) do
+      {200, _} ->
+        Formatter.success("Tailscale sidecar started")
+
+      other ->
+        Formatter.warning("Could not start Tailscale sidecar: #{inspect(other)}")
+        Formatter.info("You may need to run 'dustctl init' again after fixing the issue.")
+    end
+  end
 
   # ── New network ────────────────────────────────────────────────────────
 

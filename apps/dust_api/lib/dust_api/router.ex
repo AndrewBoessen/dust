@@ -112,6 +112,12 @@ defmodule Dust.Api.Router do
     Dust.Api.Handlers.ServiceHandler.stop(conn)
   end
 
+  # ── Network ────────────────────────────────────────────────────────────
+
+  post "/api/v1/network/start" do
+    Dust.Api.Handlers.NetworkHandler.start(conn)
+  end
+
   # ── Garbage Collection ─────────────────────────────────────────────────
 
   get "/api/v1/gc/stats" do

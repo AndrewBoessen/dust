@@ -2,9 +2,10 @@ defmodule Dust.Ui.SetupLive do
   @moduledoc """
   First-time setup wizard.
 
-  Mirrors `dustctl init`: pick a password, pick a node name, and either
-  create a new network (mkdir root) or join an existing one (peer IP +
-  invite token).
+  Mirrors `dustctl init`: pick a device name, set a keystore password,
+  bring up Tailscale with the chosen name (NOT before — the bridge
+  defers its sidecar startup until init completes), then create a new
+  network or join an existing one.
 
   Visited only when `Dust.Utilities.File.master_key_file/0` does not yet
   exist; `SessionController.new` redirects here. After a successful
@@ -19,8 +20,6 @@ defmodule Dust.Ui.SetupLive do
   @impl true
   def mount(_params, _session, socket) do
     if first_time_setup?() do
-      if connected?(socket), do: Process.send_after(self(), :poll_bridge, 2500)
-
       {:ok,
        assign(socket,
          page_title: "First-time setup",
@@ -33,7 +32,7 @@ defmodule Dust.Ui.SetupLive do
          token: "",
          error: nil,
          busy?: false,
-         tailscale: fetch_bridge_status()
+         tailscale: %{state: "unavailable", self_ip: nil, auth_url: nil}
        )}
     else
       {:ok, redirect(socket, to: ~p"/login")}
@@ -67,21 +66,88 @@ defmodule Dust.Ui.SetupLive do
 
     case validate(socket.assigns) do
       :ok ->
-        socket = assign(socket, busy?: true, error: nil)
-        {:noreply, run_setup(socket)}
+        {:noreply,
+         socket
+         |> assign(busy?: true, error: nil, step: :provisioning)
+         |> tap_send(:provision)}
 
       {:error, message} ->
         {:noreply, assign(socket, error: message)}
     end
   end
 
+  # ── Provisioning state machine ──────────────────────────────────────
+
   @impl true
-  def handle_info(:poll_bridge, socket) do
-    Process.send_after(self(), :poll_bridge, 2500)
-    {:noreply, assign(socket, tailscale: fetch_bridge_status())}
+  def handle_info(:provision, socket) do
+    a = socket.assigns
+
+    with :ok <- save_node_name(a.node_name),
+         :ok <- unlock_keystore(a.password),
+         :ok <- start_sidecar() do
+      case a.mode do
+        :create ->
+          # Tailscale is starting in the background, but we don't need it
+          # to be authenticated to create the root directory — the genesis
+          # node can finish setup offline and authenticate later.
+          finish_create(socket)
+
+        :join ->
+          # Have to wait for Tailscale to come up and authenticate before
+          # we can do the actual cluster join handshake.
+          {:noreply,
+           socket
+           |> assign(step: :await_tailscale, tailscale: fetch_bridge_status())
+           |> tap_send_after(:poll_tailscale, 1_500)}
+      end
+    else
+      {:error, message} ->
+        {:noreply, assign(socket, busy?: false, error: message, step: :details)}
+    end
+  end
+
+  def handle_info(:poll_tailscale, socket) do
+    ts = fetch_bridge_status()
+
+    if ts_ready?(ts) do
+      finish_join(assign(socket, tailscale: ts))
+    else
+      {:noreply,
+       socket
+       |> assign(tailscale: ts)
+       |> tap_send_after(:poll_tailscale, 2_000)}
+    end
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  defp finish_create(socket) do
+    case create_root() do
+      :ok -> push_navigate(socket, to: ~p"/setup/complete?t=#{setup_token()}")
+      {:error, msg} -> {:noreply, assign(socket, busy?: false, error: msg, step: :details)}
+    end
+    |> wrap_noreply()
+  end
+
+  defp finish_join(socket) do
+    bridge = Application.get_env(:dust_bridge, :bridge_module, Dust.Bridge)
+
+    case bridge.join(socket.assigns.peer_ip, socket.assigns.token) do
+      {:ok, _master_key, _otp_cookie} ->
+        {:noreply, push_navigate(socket, to: ~p"/setup/complete?t=#{setup_token()}")}
+
+      {:error, reason} ->
+        {:noreply,
+         assign(socket,
+           busy?: false,
+           error: "Could not join network: #{inspect(reason)}",
+           step: :details
+         )}
+    end
+  end
+
+  defp wrap_noreply({:noreply, _socket} = result), do: result
+  defp wrap_noreply(socket), do: {:noreply, socket}
 
   # ── Render ──────────────────────────────────────────────────────────
 
@@ -99,7 +165,6 @@ defmodule Dust.Ui.SetupLive do
           <% :choose -> %>
             <.choose_mode />
           <% :details -> %>
-            <.tailscale_panel tailscale={@tailscale} mode={@mode} />
             <.details
               mode={@mode}
               password={@password}
@@ -109,8 +174,13 @@ defmodule Dust.Ui.SetupLive do
               token={@token}
               error={@error}
               busy?={@busy?}
-              tailscale_ready?={ts_ready?(@tailscale)}
             />
+          <% :provisioning -> %>
+            <.progress_card title="Setting up…">
+              <p>Saving device name, unlocking keystore, and starting Tailscale.</p>
+            </.progress_card>
+          <% :await_tailscale -> %>
+            <.await_tailscale_card tailscale={@tailscale} />
         <% end %>
       </div>
     </div>
@@ -147,82 +217,12 @@ defmodule Dust.Ui.SetupLive do
     """
   end
 
-  defp tailscale_panel(assigns) do
-    ~H"""
-    <div class={[
-      "rounded-lg border p-4 text-sm shadow-sm",
-      ready_class(@tailscale)
-    ]}>
-      <div class="flex items-start justify-between gap-3">
-        <div>
-          <p class="font-medium">Tailscale</p>
-          <p class="mt-0.5 text-xs uppercase tracking-wide">
-            {ts_label(@tailscale)}
-          </p>
-          <p :if={@tailscale.self_ip} class="mt-1 font-mono text-xs">
-            IP {@tailscale.self_ip}
-          </p>
-        </div>
-        <span class={[
-          "rounded-full px-2 py-0.5 text-xs font-semibold",
-          ready_pill(@tailscale)
-        ]}>
-          {if ts_ready?(@tailscale), do: "ready", else: "waiting"}
-        </span>
-      </div>
-
-      <div :if={@tailscale.auth_url} class="mt-3 border-t border-current/10 pt-3 text-xs">
-        <p>
-          Open this URL on any device to authenticate this node:
-        </p>
-        <a
-          href={@tailscale.auth_url}
-          target="_blank"
-          rel="noopener"
-          class="mt-1 inline-block break-all font-mono underline"
-        >
-          {@tailscale.auth_url}
-        </a>
-        <p class="mt-2 text-zinc-500">
-          This panel updates every few seconds — no need to refresh.
-        </p>
-      </div>
-
-      <p :if={@mode == :join and not ts_ready?(@tailscale)} class="mt-3 border-t border-current/10 pt-3 text-xs">
-        You need Tailscale authenticated before you can join an existing network.
-      </p>
-    </div>
-    """
-  end
-
-  defp ts_ready?(%{state: "authenticated", self_ip: ip}) when is_binary(ip) and ip != "",
-    do: true
-
-  defp ts_ready?(_), do: false
-
-  defp ts_label(%{state: "authenticated"}), do: "Connected"
-  defp ts_label(%{state: "needs_auth"}), do: "Needs authentication"
-  defp ts_label(%{state: "unavailable"}), do: "Bridge unavailable"
-  defp ts_label(%{state: state}), do: state || "Unknown"
-
-  defp ready_class(ts) do
-    if ts_ready?(ts),
-      do: "border-emerald-200 bg-emerald-50 text-emerald-900",
-      else: "border-amber-200 bg-amber-50 text-amber-900"
-  end
-
-  defp ready_pill(ts) do
-    if ts_ready?(ts),
-      do: "bg-emerald-200 text-emerald-900",
-      else: "bg-amber-200 text-amber-900"
-  end
-
   defp details(assigns) do
     ~H"""
     <form phx-submit="submit" class="space-y-4 rounded-lg border border-zinc-200 bg-white p-6 shadow-sm">
       <p class="text-sm text-zinc-600">
         <%= if @mode == :create do %>
-          Set a password and name this device.
+          Set a password and name this device. Tailscale will start once setup begins.
         <% else %>
           Set a password, name this device, and enter the invite from another node.
         <% end %>
@@ -289,7 +289,7 @@ defmodule Dust.Ui.SetupLive do
           Back
         </button>
 
-        <.button type="submit" {%{disabled: @busy? or submit_disabled?(@mode, @tailscale_ready?)}}>
+        <.button type="submit" {%{disabled: @busy?}}>
           {if @busy?, do: "Setting up…", else: submit_label(@mode)}
         </.button>
       </div>
@@ -297,11 +297,62 @@ defmodule Dust.Ui.SetupLive do
     """
   end
 
+  defp progress_card(assigns) do
+    ~H"""
+    <div class="rounded-lg border border-zinc-200 bg-white p-6 text-sm shadow-sm">
+      <p class="font-medium text-zinc-900">{@title}</p>
+      <div class="mt-2 text-zinc-600">{render_slot(@inner_block)}</div>
+    </div>
+    """
+  end
+
+  attr :tailscale, :map, required: true
+  slot :inner_block
+
+  defp await_tailscale_card(assigns) do
+    ~H"""
+    <div class="space-y-4 rounded-lg border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900 shadow-sm">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <p class="font-medium">Waiting for Tailscale</p>
+          <p class="mt-0.5 text-xs uppercase tracking-wide">
+            {ts_label(@tailscale)}
+          </p>
+        </div>
+        <span class="rounded-full bg-amber-200 px-2 py-0.5 text-xs font-semibold">waiting</span>
+      </div>
+
+      <div :if={@tailscale.auth_url} class="border-t border-amber-200 pt-3 text-xs">
+        <p>Open this URL on any device to authenticate this node:</p>
+        <a
+          href={@tailscale.auth_url}
+          target="_blank"
+          rel="noopener"
+          class="mt-1 inline-block break-all font-mono underline"
+        >
+          {@tailscale.auth_url}
+        </a>
+      </div>
+
+      <p class="text-xs">
+        Once Tailscale is authenticated, this page will continue automatically.
+      </p>
+    </div>
+    """
+  end
+
   defp submit_label(:create), do: "Create network"
   defp submit_label(:join), do: "Join network"
 
-  defp submit_disabled?(:join, ready?), do: not ready?
-  defp submit_disabled?(_, _), do: false
+  defp ts_ready?(%{state: "authenticated", self_ip: ip}) when is_binary(ip) and ip != "",
+    do: true
+
+  defp ts_ready?(_), do: false
+
+  defp ts_label(%{state: "authenticated"}), do: "Connected"
+  defp ts_label(%{state: "needs_auth"}), do: "Needs authentication"
+  defp ts_label(%{state: "unavailable"}), do: "Starting…"
+  defp ts_label(%{state: state}), do: state || "Unknown"
 
   # ── Validation ──────────────────────────────────────────────────────
 
@@ -329,45 +380,12 @@ defmodule Dust.Ui.SetupLive do
       assigns.mode == :join and assigns.token == "" ->
         {:error, "Invite token is required to join."}
 
-      assigns.mode == :join and not tailscale_ready?(assigns.tailscale) ->
-        {:error, "Tailscale isn't authenticated yet. Complete the auth step above and try again."}
-
       true ->
         :ok
     end
   end
 
-  defp tailscale_ready?(%{state: "authenticated", self_ip: ip}) when is_binary(ip) and ip != "",
-    do: true
-
-  defp tailscale_ready?(_), do: false
-
-  # ── Setup runner ────────────────────────────────────────────────────
-
-  defp run_setup(socket) do
-    a = socket.assigns
-
-    with :ok <- unlock_keystore(a.password),
-         :ok <- save_node_name(a.node_name),
-         :ok <- run_mode(a.mode, a.peer_ip, a.token) do
-      token =
-        Phoenix.Token.sign(Dust.Ui.Endpoint, "setup_complete", true, max_age: 60)
-
-      push_navigate(socket, to: ~p"/setup/complete?t=#{token}")
-    else
-      {:error, message} ->
-        assign(socket, busy?: false, error: message)
-    end
-  end
-
-  defp unlock_keystore(password) do
-    case Dust.Core.KeyStore.unlock(password) do
-      :ok -> :ok
-      {:error, :already_unlocked} -> :ok
-      {:error, :decrypt_failed} -> {:error, "Keystore is already initialized with a different password."}
-      {:error, reason} -> {:error, "Could not unlock keystore: #{inspect(reason)}"}
-    end
-  end
+  # ── Provision helpers ───────────────────────────────────────────────
 
   defp save_node_name(name) do
     case Dust.Utilities.Config.put(:node_name, name) do
@@ -376,7 +394,30 @@ defmodule Dust.Ui.SetupLive do
     end
   end
 
-  defp run_mode(:create, _peer_ip, _token) do
+  defp unlock_keystore(password) do
+    case Dust.Core.KeyStore.unlock(password) do
+      :ok ->
+        :ok
+
+      {:error, :already_unlocked} ->
+        :ok
+
+      {:error, :decrypt_failed} ->
+        {:error, "Keystore is already initialized with a different password."}
+
+      {:error, reason} ->
+        {:error, "Could not unlock keystore: #{inspect(reason)}"}
+    end
+  end
+
+  defp start_sidecar do
+    case Dust.Bridge.start_sidecar() do
+      :ok -> :ok
+      {:error, reason} -> {:error, "Could not start Tailscale: #{inspect(reason)}"}
+    end
+  end
+
+  defp create_root do
     case Dust.Mesh.FileSystem.mkdir(nil, "/") do
       {:ok, root_id} ->
         _ = Dust.Utilities.Config.put(:root_dir_id, root_id)
@@ -399,18 +440,6 @@ defmodule Dust.Ui.SetupLive do
     end
   end
 
-  defp run_mode(:join, peer_ip, token) do
-    bridge = Application.get_env(:dust_bridge, :bridge_module, Dust.Bridge)
-
-    case bridge.join(peer_ip, token) do
-      {:ok, _master_key, _otp_cookie} ->
-        :ok
-
-      {:error, reason} ->
-        {:error, "Could not join network: #{inspect(reason)}"}
-    end
-  end
-
   defp fetch_bridge_status do
     bridge = Application.get_env(:dust_bridge, :bridge_module, Dust.Bridge)
 
@@ -424,5 +453,18 @@ defmodule Dust.Ui.SetupLive do
     catch
       :exit, _ -> %{state: "unavailable", self_ip: nil, auth_url: nil}
     end
+  end
+
+  defp setup_token,
+    do: Phoenix.Token.sign(Dust.Ui.Endpoint, "setup_complete", true, max_age: 60)
+
+  defp tap_send(socket, msg) do
+    send(self(), msg)
+    socket
+  end
+
+  defp tap_send_after(socket, msg, ms) do
+    Process.send_after(self(), msg, ms)
+    socket
   end
 end
