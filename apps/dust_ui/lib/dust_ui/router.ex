@@ -25,6 +25,9 @@ defmodule Dust.Ui.Router do
       pipe_through :redirect_if_authed
       get "/login", SessionController, :new
       post "/login", SessionController, :create
+
+      live "/setup", SetupLive, :new
+      get "/setup/complete", SessionController, :complete
     end
 
     delete "/logout", SessionController, :delete
