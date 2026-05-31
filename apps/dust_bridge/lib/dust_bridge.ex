@@ -255,7 +255,7 @@ defmodule Dust.Bridge do
   def init(opts) do
     state = %{port: nil, opts: opts}
 
-    if first_time_setup?() do
+    if Keyword.get(opts, :defer, first_time_setup?()) do
       # No keystore yet: defer sidecar startup so Tailscale doesn't get
       # registered under the placeholder node_name ("dust"). The init
       # flow will call `start_sidecar/0` after the user picks a name.

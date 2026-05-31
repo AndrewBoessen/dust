@@ -35,7 +35,10 @@ defmodule Dust.CLI.Commands.Network do
             auth_url
           else
             Owl.Spinner.start(id: :auth_poll, labels: [processing: "Checking for login URL..."])
-            url = poll_for_auth_url(config, 15)
+            # Cold sidecar starts can take 30–45s before tsnet hands out a
+            # login URL; poll long enough to ride through that without
+            # falsely telling the user nothing is happening.
+            url = poll_for_auth_url(config, 60)
             spinner_stop(id: :auth_poll, resolution: :ok)
             url
           end
