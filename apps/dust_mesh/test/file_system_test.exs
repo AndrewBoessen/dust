@@ -16,6 +16,9 @@ defmodule Dust.Mesh.FileSystemTest do
     start_supervised!(Dust.Mesh.NodeRegistry)
     start_supervised!(Dust.Mesh.FileSystem.DirMap)
     start_supervised!(Dust.Mesh.FileSystem.FileMap)
+    start_supervised!(Dust.Mesh.Manifest.FileIndex)
+    start_supervised!(Dust.Mesh.Manifest.ChunkIndex)
+    start_supervised!(Dust.Mesh.Manifest.ShardMap)
   end
 
   setup_all do
