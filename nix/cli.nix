@@ -20,7 +20,7 @@ let
   mixFodDeps = beamPackages.fetchMixDeps {
     pname = "${pname}-mix-deps";
     inherit src version elixir;
-    hash = "sha256-hypOYa0e+acGXff3YhJYd7q+psr0Jtc1Js6yjMTISa4=";
+    hash = "sha256-UXmd6l9mwIqELDpcBOz1qqGOi9vD3tpog2oAC0Y6evE=";
 
     env = {
       MIX_ENV = "prod";
