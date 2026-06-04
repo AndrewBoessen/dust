@@ -10,7 +10,7 @@ by adding `storage` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:storage, "~> 0.1.5}
+    {:storage, "~> 0.2.0}
   ]
 end
 ```

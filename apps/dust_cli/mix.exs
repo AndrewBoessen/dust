@@ -4,7 +4,7 @@ defmodule Dust.Cli.MixProject do
   def project do
     [
       app: :dust_cli,
-      version: "0.1.5",
+      version: "0.2.0",
       build_path: "../../_build",
       config_path: "../../config/config.exs",
       deps_path: "../../deps",

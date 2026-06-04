@@ -62,7 +62,7 @@ defmodule Dust.CLI do
 
   alias Dust.CLI.{Client, Formatter, Commands}
 
-  @version "0.1.5"
+  @version "0.2.0"
 
   # Commands that DO NOT require Tailscale connectivity
   @no_network_required ~w(init status auth daemon unlock lock config help version ui)
