@@ -95,6 +95,8 @@ jobs:
 
       - name: Set up Elixir
         uses: erlef/setup-beam@v1
+        env:
+          ImageOS: ubuntu22
         with:
           elixir-version: ${{ env.ELIXIR_VERSION }}
           otp-version: ${{ env.OTP_VERSION }}
@@ -363,26 +365,31 @@ jobs:
         include:
           - target: linux_x86_64
             runner: ubuntu-22.04
+            image_os: ubuntu22
             artifact_ext: ""
             sys_deps: |
               sudo apt-get update
               sudo apt-get install -y xz-utils
           - target: linux_aarch64
             runner: ubuntu-22.04-arm
+            image_os: ubuntu22
             artifact_ext: ""
             sys_deps: |
               sudo apt-get update
               sudo apt-get install -y xz-utils
           - target: macos_x86_64
             runner: macos-15-intel
+            image_os: macos15
             artifact_ext: ""
             sys_deps: brew install xz
           - target: macos_aarch64
             runner: macos-14
+            image_os: macos14
             artifact_ext: ""
             sys_deps: brew install xz
           - target: windows_x86_64
             runner: windows-2022
+            image_os: win22
             artifact_ext: ".exe"
             sys_deps: ""
 
@@ -391,6 +398,8 @@ jobs:
 
       - name: Set up Elixir
         uses: erlef/setup-beam@v1
+        env:
+          ImageOS: ${{ matrix.image_os }}
         with:
           elixir-version: ${{ env.ELIXIR_VERSION }}
           otp-version: ${{ env.OTP_VERSION }}
