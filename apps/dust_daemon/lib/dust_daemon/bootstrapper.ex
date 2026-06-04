@@ -95,13 +95,31 @@ defmodule Dust.Daemon.Bootstrapper do
 
   @spec await_bridge_ready() :: :ok
   defp await_bridge_ready do
-    if bridge_disabled?() do
-      Logger.info("Bootstrapper [1/5]: bridge sidecar disabled — skipping health check")
-      :ok
-    else
-      Logger.info("Bootstrapper [1/5]: checking bridge sidecar health…")
-      do_await_bridge(1)
+    cond do
+      bridge_disabled?() ->
+        Logger.info("Bootstrapper [1/5]: bridge sidecar disabled — skipping health check")
+        :ok
+
+      bridge_deferred?() ->
+        Logger.info(
+          "Bootstrapper [1/5]: bridge sidecar deferred (first-time setup) — skipping health check"
+        )
+
+        :ok
+
+      true ->
+        Logger.info("Bootstrapper [1/5]: checking bridge sidecar health…")
+        do_await_bridge(1)
     end
+  end
+
+  @spec bridge_deferred?() :: boolean()
+  defp bridge_deferred? do
+    Dust.Bridge.sidecar_running?() == false
+  rescue
+    _ -> false
+  catch
+    :exit, _ -> false
   end
 
   @spec do_await_bridge(pos_integer()) :: :ok

@@ -5,8 +5,9 @@ defmodule Dust.MixProject do
     [
       apps_path: "apps",
       name: "Dust",
-      version: "0.1.5",
+      version: "0.2.0",
       start_permanent: Mix.env() == :prod,
+      listeners: [Phoenix.CodeReloader],
       deps: deps(),
       releases: releases()
     ]
@@ -31,7 +32,8 @@ defmodule Dust.MixProject do
           dust_storage: :permanent,
           dust_mesh: :permanent,
           dust_daemon: :permanent,
-          dust_api: :permanent
+          dust_api: :permanent,
+          dust_ui: :permanent
         ],
         strip_beams: [keep: ["Docs"]],
         cookie: "dust_cookie"

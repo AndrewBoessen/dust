@@ -15,5 +15,12 @@ config :dust_bridge, :start_sidecar, false
 # in tests so it never collides with a running dust daemon on the dev box.
 config :dust_utilities, :config, %{
   persist_dir: Path.join(System.tmp_dir!(), "dust_test"),
-  api_port: 14884
+  api_port: 14884,
+  ui_port: 14885
 }
+
+# ── Web UI test settings ───────────────────────────────────────────────
+config :dust_ui, Dust.Ui.Endpoint,
+  http: [ip: {127, 0, 0, 1}, port: 14885],
+  secret_key_base: "test_secret_key_base_placeholder_must_be_at_least_64_chars_long_xx",
+  server: false

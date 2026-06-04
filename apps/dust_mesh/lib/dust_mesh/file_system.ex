@@ -404,7 +404,16 @@ defmodule Dust.Mesh.FileSystem do
     end
   end
 
-  @doc "Deletes a file entirely. (Accepts dir_id for legacy API compliance)."
+  @doc """
+  Deletes a file entirely.
+
+  Removes the directory-listing entry from `FileMap` AND drops the
+  corresponding `Manifest.FileIndex` entry so the garbage collector
+  treats the chunks as orphans on its next sweep. `Manifest.remove_file/2`
+  also cleans `ChunkIndex` and `ShardMap` entries for any chunk no
+  longer referenced by any other file. (Accepts dir_id for legacy API
+  compliance.)
+  """
   @spec rm_file(uuid(), uuid() | nil) :: :ok | {:error, :not_found | :crdt_unavailable}
   def rm_file(file_id, _dir_id \\ nil) when is_binary(file_id) do
     case FileMap.get(file_id) do
@@ -412,6 +421,10 @@ defmodule Dust.Mesh.FileSystem do
         {:error, :not_found}
 
       _meta ->
+        # Best-effort manifest cleanup. `remove_file` returns `{:error, :not_found}`
+        # for uploads that failed before populating FileIndex, which is fine —
+        # the FileMap entry should still be removed.
+        _ = Dust.Mesh.Manifest.remove_file(file_id, Dust.Utilities.Config.total_shards())
         FileMap.delete(file_id)
     end
   end

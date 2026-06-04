@@ -212,4 +212,20 @@ defmodule Dust.Core.Fitness do
   def record(node_id, observation) when is_atom(node_id) do
     ModelStore.update(node_id, observation)
   end
+
+  @doc """
+  List every node for which a fitness model is currently stored.
+
+  Returns `[{node(), NodeEMA.t()}]`. Order is unspecified. Reads directly
+  from the public ETS table, so it is lock-free and safe at any time.
+  Nodes that have never been interacted with are NOT in the list — call
+  `score/1` to get a default model for an unseen node.
+  """
+  @spec list() :: [{node(), NodeEMA.t()}]
+  def list do
+    case :ets.whereis(:fitness_models) do
+      :undefined -> []
+      _tid -> :ets.tab2list(:fitness_models)
+    end
+  end
 end

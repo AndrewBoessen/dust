@@ -29,9 +29,13 @@ defmodule Dust.BridgeTest do
 
     File.chmod!(wrapper, 0o755)
 
-    # Start the Bridge GenServer with the fake sidecar
+    # Start the Bridge GenServer with the fake sidecar. `defer: false`
+    # bypasses the first-time-setup check that would normally hold the
+    # Port closed until `Dust.Bridge.start_sidecar/0` is called.
     pid =
-      start_supervised!({Dust.Bridge, [sidecar_path: wrapper, ts_state_dir: System.tmp_dir!()]})
+      start_supervised!(
+        {Dust.Bridge, [sidecar_path: wrapper, ts_state_dir: System.tmp_dir!(), defer: false]}
+      )
 
     # Give the script a moment to boot
     Process.sleep(200)

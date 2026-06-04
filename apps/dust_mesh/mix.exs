@@ -4,7 +4,7 @@ defmodule Dust.Mesh.MixProject do
   def project do
     [
       app: :dust_mesh,
-      version: "0.1.5",
+      version: "0.2.0",
       build_path: "../../_build",
       config_path: "../../config/config.exs",
       deps_path: "../../deps",
@@ -29,6 +29,7 @@ defmodule Dust.Mesh.MixProject do
       {:delta_crdt, "~> 0.6.5"},
       {:cubdb, "~> 2.0.2"},
       {:dust_core, in_umbrella: true},
+      {:dust_utilities, in_umbrella: true},
       {:mox, "~> 1.0", only: :test}
     ]
   end

@@ -20,8 +20,10 @@ defmodule Dust.Api.Handlers.StatusHandler do
       disk: disk_status(),
       network: network,
       persist_dir: Dust.Utilities.Config.persist_dir(),
+      ui_port: Dust.Utilities.Config.ui_port(),
+      ui_bind: Dust.Utilities.Config.ui_bind(),
       uptime_ms: :erlang.statistics(:wall_clock) |> elem(0),
-      version: "0.1.5"
+      version: "0.2.0"
     }
 
     json_response(conn, 200, status)

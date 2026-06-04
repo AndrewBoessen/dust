@@ -65,7 +65,14 @@ defmodule Dust.CLI.Commands.Init do
 
     IO.puts("")
 
-    # Step 3: Unlock key store
+    # Step 3: Node name (must happen BEFORE Tailscale starts — changing
+    # the name later forces a re-auth because Tailscale identity is keyed
+    # by hostname).
+    setup_node_name(config)
+
+    IO.puts("")
+
+    # Step 4: Unlock key store
     IO.puts("  Checking key store...")
 
     case Client.get(config, "/api/v1/status") do
@@ -105,12 +112,12 @@ defmodule Dust.CLI.Commands.Init do
 
     IO.puts("")
 
-    # Step 4: Node name
-    setup_node_name(config)
+    # Step 5: Bring up Tailscale now that node_name is finalized.
+    start_network(config)
 
     IO.puts("")
 
-    # Step 5: Network setup
+    # Step 6: Network setup
     Formatter.heading("Network Setup")
     IO.puts("")
 
@@ -201,6 +208,83 @@ defmodule Dust.CLI.Commands.Init do
   end
 
   defp valid_node_name?(_), do: false
+
+  # ── Bring up Tailscale ────────────────────────────────────────────────
+
+  defp start_network(config) do
+    IO.puts("  Starting Tailscale…")
+
+    case Client.post(config, "/api/v1/network/start", %{}) do
+      {200, _} ->
+        Formatter.success("Tailscale sidecar started")
+        IO.puts("")
+        wait_for_tailscale(config)
+
+      other ->
+        Formatter.warning("Could not start Tailscale sidecar: #{inspect(other)}")
+        Formatter.info("You may need to run 'dustctl init' again after fixing the issue.")
+    end
+  end
+
+  # Cold-starting the Go sidecar (load tsnet state, register with control
+  # plane, mint a login URL) routinely takes 15–45 s. Poll long enough to
+  # surface either the auth URL or the connected state inline so the user
+  # doesn't have to follow up with `dustctl auth`.
+  @tailscale_poll_total_s 45
+  @tailscale_poll_interval_ms 2_000
+
+  defp wait_for_tailscale(config) do
+    Owl.Spinner.start(id: :ts_init, labels: [processing: "Reaching Tailscale…"])
+
+    case poll_tailscale(config, @tailscale_poll_total_s) do
+      {:authenticated, self_ip} ->
+        spinner_stop(id: :ts_init, resolution: :ok, label: "Tailscale connected (#{self_ip})")
+        :ok
+
+      {:auth_url, url} ->
+        spinner_stop(id: :ts_init, resolution: :ok, label: "Tailscale auth URL is ready")
+        IO.puts("")
+
+        Formatter.info_box("Tailscale Auth", [
+          "Open this URL on any device to authenticate this node:\n\n",
+          Owl.Data.tag("  " <> url, [:cyan, :underline])
+        ])
+
+        IO.puts("")
+        Formatter.info("Run 'dustctl auth' to wait for authentication.")
+        :ok
+
+      :still_starting ->
+        spinner_stop(id: :ts_init, resolution: :error, label: "Tailscale did not respond in time")
+        Formatter.info("Run 'dustctl auth' shortly to retrieve the login URL.")
+        :ok
+    end
+  end
+
+  defp poll_tailscale(_config, remaining_s) when remaining_s <= 0, do: :still_starting
+
+  defp poll_tailscale(config, remaining_s) do
+    :timer.sleep(@tailscale_poll_interval_ms)
+
+    case Client.get(config, "/api/v1/status") do
+      {200, {:ok, %{"network" => %{"connected" => true, "self_ip" => ip}}}}
+      when is_binary(ip) and ip != "" ->
+        {:authenticated, ip}
+
+      {200, {:ok, %{"network" => %{"auth_url" => url}}}}
+      when is_binary(url) and url != "" ->
+        {:auth_url, url}
+
+      _ ->
+        poll_tailscale(config, remaining_s - div(@tailscale_poll_interval_ms, 1_000))
+    end
+  end
+
+  defp spinner_stop(opts) do
+    Owl.Spinner.stop(opts)
+  rescue
+    _ -> :ok
+  end
 
   # ── New network ────────────────────────────────────────────────────────
 
