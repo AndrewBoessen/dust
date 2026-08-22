@@ -51,7 +51,37 @@ defmodule Dust.Bridge.Secrets do
   @doc "Caches a base-64 encoded master key obtained from a peer node."
   @spec store_fetched_master_key(String.t()) :: :ok
   def store_fetched_master_key(master_key_b64) do
-    Agent.update(__MODULE__, fn _ -> master_key_b64 end)
+    if Process.whereis(__MODULE__) do
+      Agent.update(__MODULE__, fn _ -> master_key_b64 end)
+    end
+
+    :ok
+  end
+
+  @doc """
+  Adopts the OTP cookie and master key fetched from a peer during a join.
+
+  `Dust.Bridge.join/2` only *retrieves* the pair; the node has to persist
+  and apply them or nothing about it actually changes. Until it does, the
+  node keeps the genesis cookie it minted for itself at first boot, and
+  every peer rejects its handshake with "Invalid challenge reply".
+
+  Used by the runtime join paths (`POST /api/v1/join` and the Web UI
+  setup wizard). The boot-time `JOIN_IP`/`JOIN_TOKEN` path in `setup/0`
+  goes through the same function.
+  """
+  @spec adopt_joined_secrets(String.t(), String.t()) :: :ok | {:error, term()}
+  def adopt_joined_secrets(master_key_b64, otp_cookie) do
+    path = Dust.Utilities.File.secrets_file()
+
+    save_cookie(path, otp_cookie)
+    apply_cookie(otp_cookie)
+    store_fetched_master_key(master_key_b64)
+    :ok
+  rescue
+    e ->
+      Logger.error("Bridge Secrets: Failed to adopt joined secrets: #{inspect(e)}")
+      {:error, e}
   end
 
   @doc """
@@ -81,7 +111,7 @@ defmodule Dust.Bridge.Secrets do
 
       if join_ip && join_token do
         Logger.info("Bridge Secrets: Attempting to join mesh via #{join_ip}...")
-        join_mesh(join_ip, join_token, secrets_path)
+        join_mesh(join_ip, join_token)
       else
         Logger.info(
           "Bridge Secrets: No secrets found and no join config. Generating genesis OTP cookie..."
@@ -103,13 +133,11 @@ defmodule Dust.Bridge.Secrets do
     end
   end
 
-  defp join_mesh(ip, token, path) do
+  defp join_mesh(ip, token) do
     case Dust.Bridge.join(ip, token) do
       {:ok, master_key_b64, otp_cookie} ->
         Logger.info("Bridge Secrets: Successfully fetched secrets from peer!")
-        save_cookie(path, otp_cookie)
-        apply_cookie(otp_cookie)
-        store_fetched_master_key(master_key_b64)
+        adopt_joined_secrets(master_key_b64, otp_cookie)
 
       {:error, reason} ->
         Logger.error(

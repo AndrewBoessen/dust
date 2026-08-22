@@ -32,6 +32,7 @@ defmodule Dust.Ui.SetupLive do
          token: "",
          error: nil,
          busy?: false,
+         confirm_key_overwrite: nil,
          tailscale: %{state: "unavailable", self_ip: nil, auth_url: nil}
        )}
     else
@@ -47,6 +48,21 @@ defmodule Dust.Ui.SetupLive do
   @impl true
   def handle_event("choose_mode", %{"mode" => mode}, socket) when mode in ["create", "join"] do
     {:noreply, assign(socket, mode: String.to_atom(mode), step: :details, error: nil)}
+  end
+
+  def handle_event("confirm_key_overwrite", _params, socket) do
+    socket
+    |> assign(busy?: true, confirm_key_overwrite: nil, error: nil)
+    |> finish_join(true)
+  end
+
+  def handle_event("cancel_key_overwrite", _params, socket) do
+    {:noreply,
+     assign(socket,
+       busy?: false,
+       confirm_key_overwrite: nil,
+       error: "Join cancelled — nothing was changed."
+     )}
   end
 
   def handle_event("back", _params, socket),
@@ -129,12 +145,30 @@ defmodule Dust.Ui.SetupLive do
     |> wrap_noreply()
   end
 
-  defp finish_join(socket) do
-    bridge = Application.get_env(:dust_bridge, :bridge_module, Dust.Bridge)
-
-    case bridge.join(socket.assigns.peer_ip, socket.assigns.token) do
-      {:ok, _master_key, _otp_cookie} ->
+  defp finish_join(socket, force? \\ false) do
+    # Dust.Daemon.Join adopts the network's OTP cookie and master key —
+    # fetching them is not enough. It refuses to replace the master key on
+    # a node that already holds data unless `force: true` confirms it.
+    case Dust.Daemon.Join.join(socket.assigns.peer_ip, socket.assigns.token, force: force?) do
+      {:ok, _master_key_outcome} ->
         {:noreply, push_navigate(socket, to: ~p"/setup/complete?t=#{setup_token()}")}
+
+      {:error, :local_data_exists, local_data} ->
+        {:noreply,
+         assign(socket,
+           busy?: false,
+           error: nil,
+           confirm_key_overwrite: local_data,
+           step: :details
+         )}
+
+      {:error, :key_store_locked} ->
+        {:noreply,
+         assign(socket,
+           busy?: false,
+           error: "Unlock the key store before joining so the network's master key can be adopted.",
+           step: :details
+         )}
 
       {:error, reason} ->
         {:noreply,
@@ -145,6 +179,13 @@ defmodule Dust.Ui.SetupLive do
          )}
     end
   end
+
+  defp local_data_summary(%{shards: :unknown}), do: "amount unknown"
+
+  defp local_data_summary(%{shards: shards, files: files}),
+    do: "#{files} file(s), #{shards} stored shard(s)"
+
+  defp local_data_summary(_), do: "amount unknown"
 
   defp wrap_noreply({:noreply, _socket} = result), do: result
   defp wrap_noreply(socket), do: {:noreply, socket}
@@ -174,6 +215,7 @@ defmodule Dust.Ui.SetupLive do
               token={@token}
               error={@error}
               busy?={@busy?}
+              confirm_key_overwrite={@confirm_key_overwrite}
             />
           <% :provisioning -> %>
             <.progress_card title="Setting up…">
@@ -280,6 +322,30 @@ defmodule Dust.Ui.SetupLive do
 
       <p :if={@error} class="text-sm text-rose-600">{@error}</p>
 
+      <div
+        :if={@confirm_key_overwrite}
+        class="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm"
+      >
+        <p class="font-medium text-amber-900">This node already holds data</p>
+        <p class="mt-1 text-amber-800">
+          Joining adopts the network's master key. Data stored under this node's
+          current key ({local_data_summary(@confirm_key_overwrite)}) becomes
+          permanently unreadable.
+        </p>
+        <div class="mt-3 flex items-center gap-3">
+          <.button type="button" phx-click="confirm_key_overwrite">
+            Join and replace key
+          </.button>
+          <button
+            type="button"
+            phx-click="cancel_key_overwrite"
+            class="text-sm text-zinc-600 hover:text-zinc-900"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+
       <div class="flex items-center justify-between gap-2 pt-2">
         <button
           type="button"
@@ -289,7 +355,7 @@ defmodule Dust.Ui.SetupLive do
           Back
         </button>
 
-        <.button type="submit" {%{disabled: @busy?}}>
+        <.button type="submit" {%{disabled: @busy? or not is_nil(@confirm_key_overwrite)}}>
           {if @busy?, do: "Setting up…", else: submit_label(@mode)}
         </.button>
       </div>

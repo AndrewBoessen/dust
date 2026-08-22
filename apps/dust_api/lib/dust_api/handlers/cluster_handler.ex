@@ -67,10 +67,35 @@ defmodule Dust.Api.Handlers.ClusterHandler do
   @spec join(Plug.Conn.t()) :: Plug.Conn.t()
   def join(conn) do
     case conn.body_params do
-      %{"peer_address" => peer_address, "token" => token} ->
-        case bridge_module().join(peer_address, token) do
-          {:ok, _master_key, _otp_cookie} ->
-            json_response(conn, 200, %{status: "joined", peer: peer_address})
+      %{"peer_address" => peer_address, "token" => token} = params ->
+        # `force` confirms replacing this node's master key with the
+        # network's when it already holds data encrypted under its own.
+        force? = params["force"] == true
+
+        case Dust.Daemon.Join.join(peer_address, token, force: force?) do
+          {:ok, master_key_outcome} ->
+            json_response(conn, 200, %{
+              status: "joined",
+              peer: peer_address,
+              master_key: to_string(master_key_outcome)
+            })
+
+          {:error, :local_data_exists, counts} ->
+            json_response(conn, 409, %{
+              error: "local_data_exists",
+              message:
+                "This node already holds data encrypted with its own master key. " <>
+                  "Adopting the network's key will make that data unreadable. " <>
+                  "Retry with \"force\": true to proceed.",
+              local_data: counts
+            })
+
+          {:error, :key_store_locked} ->
+            json_response(conn, 409, %{
+              error: "key_store_locked",
+              message:
+                "Unlock the key store before joining so the network's master key can be adopted."
+            })
 
           {:error, reason} ->
             json_response(conn, 400, %{error: inspect(reason)})

@@ -115,20 +115,28 @@ defmodule Dust.CLI do
 
   # ── Global option parsing ──────────────────────────────────────────────
 
-  # Pure: splits global flags from the command without touching the daemon.
-  defp parse_argv(args) do
-    {opts, rest, _} =
-      OptionParser.parse(args,
-        strict: [
-          host: :string,
-          port: :integer,
-          token: :string,
-          data_dir: :string
-        ],
-        aliases: [h: :host, p: :port, t: :token, d: :data_dir]
-      )
+  @global_switches [host: :string, port: :integer, token: :string, data_dir: :string]
+  @global_aliases [h: :host, p: :port, t: :token, d: :data_dir]
 
-    {opts, rest}
+  # Pure: splits global flags from the command without touching the daemon.
+  #
+  # Uses parse_head/2 so parsing stops at the command word and everything
+  # after it reaches the command untouched. Plain parse/2 pulls switches
+  # out of the whole line and *drops* the ones it doesn't know, which
+  # silently swallowed every sub-command flag (`dustctl join IP TOK
+  # --force`, `dustctl unlock --password ...`) before it could be read.
+  #
+  # Global flags written after the command are still honoured — they are
+  # scanned out of the tail and merged, with anything before the command
+  # winning — so `dustctl status --port 4899` keeps working.
+  defp parse_argv(args) do
+    {head_opts, rest, _} =
+      OptionParser.parse_head(args, strict: @global_switches, aliases: @global_aliases)
+
+    {tail_opts, _rest, _invalid} =
+      OptionParser.parse(rest, strict: @global_switches, aliases: @global_aliases)
+
+    {Keyword.merge(tail_opts, head_opts), rest}
   end
 
   defp build_config(opts) do
