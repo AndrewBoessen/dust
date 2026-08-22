@@ -110,6 +110,28 @@ defmodule Dust.CLI.Formatter do
     IO.puts("")
   end
 
+  # ── Spinners ───────────────────────────────────────────────────────────
+
+  @doc """
+  Stops a spinner without ever taking the CLI down with it.
+
+  `Owl.Spinner.stop/1` is a `GenServer.call` to a process registered under
+  the spinner's id. That call **exits** (it does not raise) when the
+  spinner isn't alive — because it failed to start, already stopped, or
+  the render call timed out — and an exit inside `Dust.CLI.run/1` kills
+  the whole CLI mid-command. Since a spinner is decoration, losing one
+  should never cost the user the work the command already did.
+  """
+  @spec spinner_stop(keyword()) :: :ok
+  def spinner_stop(opts) do
+    Owl.Spinner.stop(opts)
+    :ok
+  rescue
+    _ -> :ok
+  catch
+    :exit, _ -> :ok
+  end
+
   # ── API error handler ──────────────────────────────────────────────────
 
   @doc """

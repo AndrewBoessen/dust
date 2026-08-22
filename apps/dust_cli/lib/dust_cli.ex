@@ -52,6 +52,9 @@ defmodule Dust.CLI do
       help                  Show this help message
       version               Show version
 
+  `help` and `version` (also `--help` / `--version`, or `dustctl` with no
+  arguments) work without a running daemon or a configured node.
+
   ## Global Options
 
       --host HOST           Daemon host (default: 127.0.0.1)
@@ -67,17 +70,53 @@ defmodule Dust.CLI do
   # Commands that DO NOT require Tailscale connectivity
   @no_network_required ~w(init status auth daemon unlock lock config help version ui)
 
+  # Flags that mean "help" / "version" rather than naming a command.
+  # `-h` is deliberately absent: it is the alias for `--host`.
+  @help_flags ~w(--help -?)
+  @version_flags ~w(--version)
+
   @doc false
   def run(args) do
-    args
-    |> parse_global_opts()
+    {opts, command} =
+      args
+      |> normalize_offline_flags()
+      |> parse_argv()
+
+    run_command(opts, command)
+  end
+
+  # `help` and `version` have to work before the node is usable: with no
+  # daemon running, before `dustctl init`, and before Tailscale is
+  # authenticated. They are answered here, after the pure argv parse but
+  # before build_config/1 (which asks the daemon for its data dir) and
+  # before the Tailscale guard — so neither can keep the user from
+  # reading the usage text.
+  defp run_command(_opts, ["help" | _]), do: print_help()
+  defp run_command(_opts, ["version" | _]), do: print_version()
+  defp run_command(_opts, []), do: print_help()
+
+  defp run_command(opts, command) do
+    {build_config(opts), command}
     |> maybe_check_network()
     |> dispatch()
   end
 
+  # `dustctl` with no arguments is a request for help, as is `--help`
+  # anywhere in the line. OptionParser's `strict:` list discards those
+  # flags as unknown, which used to leave an empty command that fell
+  # through to the connectivity guard instead of printing usage.
+  defp normalize_offline_flags(args) do
+    cond do
+      Enum.any?(args, &(&1 in @help_flags)) -> ["help"]
+      Enum.any?(args, &(&1 in @version_flags)) -> ["version"]
+      true -> args
+    end
+  end
+
   # ── Global option parsing ──────────────────────────────────────────────
 
-  defp parse_global_opts(args) do
+  # Pure: splits global flags from the command without touching the daemon.
+  defp parse_argv(args) do
     {opts, rest, _} =
       OptionParser.parse(args,
         strict: [
@@ -89,6 +128,10 @@ defmodule Dust.CLI do
         aliases: [h: :host, p: :port, t: :token, d: :data_dir]
       )
 
+    {opts, rest}
+  end
+
+  defp build_config(opts) do
     explicit_data_dir = Keyword.get(opts, :data_dir)
 
     config = %{
@@ -100,14 +143,11 @@ defmodule Dust.CLI do
 
     # If --data-dir was not explicitly set, ask the running daemon for its
     # actual persist_dir. /api/v1/status is auth-exempt so no token needed.
-    config =
-      if explicit_data_dir do
-        config
-      else
-        resolve_data_dir_from_daemon(config)
-      end
-
-    {config, rest}
+    if explicit_data_dir do
+      config
+    else
+      resolve_data_dir_from_daemon(config)
+    end
   end
 
   defp resolve_data_dir_from_daemon(config) do
@@ -125,7 +165,9 @@ defmodule Dust.CLI do
   # ── Network connectivity guard ─────────────────────────────────────────
 
   defp maybe_check_network({config, args} = input) do
-    command = List.first(args) || ""
+    # run_command/2 already answered the empty command; treating it as
+    # help here too keeps a stray empty list off the connectivity check.
+    command = List.first(args) || "help"
 
     if command in @no_network_required do
       input
@@ -202,18 +244,20 @@ defmodule Dust.CLI do
 
   defp dispatch({config, ["ui" | args]}), do: Commands.Ui.run(config, args)
 
-  defp dispatch({_config, ["version" | _]}) do
-    IO.puts("dustctl #{@version}")
-    0
-  end
-
-  defp dispatch({_config, ["help" | _]}), do: print_help()
+  # Unreachable via run_command/2, which answers the empty command first.
+  # Kept so dispatch/1 stays total over its input and can never raise a
+  # FunctionClauseError on an empty list.
   defp dispatch({_config, []}), do: print_help()
 
   defp dispatch({_config, [unknown | _]}) do
     Formatter.error("Unknown command: #{unknown}")
     Formatter.info("Run 'dustctl help' for usage information.")
     1
+  end
+
+  defp print_version do
+    IO.puts("dustctl #{@version}")
+    0
   end
 
   defp print_help do

@@ -39,7 +39,7 @@ defmodule Dust.CLI.Commands.Network do
             # login URL; poll long enough to ride through that without
             # falsely telling the user nothing is happening.
             url = poll_for_auth_url(config, 60)
-            spinner_stop(id: :auth_poll, resolution: :ok)
+            Formatter.spinner_stop(id: :auth_poll, resolution: :ok)
             url
           end
 
@@ -57,7 +57,7 @@ defmodule Dust.CLI.Commands.Network do
 
           case poll_for_auth(config, 120) do
             :ok ->
-              spinner_stop(id: :auth_wait, resolution: :ok, label: "Authentication successful")
+              Formatter.spinner_stop(id: :auth_wait, resolution: :ok, label: "Authentication successful")
               IO.puts("")
 
               case Client.get(config, "/api/v1/status") do
@@ -71,7 +71,7 @@ defmodule Dust.CLI.Commands.Network do
               0
 
             :timeout ->
-              spinner_stop(id: :auth_wait, resolution: :error, label: "Timed out waiting for authentication")
+              Formatter.spinner_stop(id: :auth_wait, resolution: :error, label: "Timed out waiting for authentication")
               IO.puts("  You can re-run 'dustctl auth' to check again.")
               1
           end
@@ -210,12 +210,6 @@ defmodule Dust.CLI.Commands.Network do
       _ ->
         poll_for_auth(config, remaining - 2)
     end
-  end
-
-  defp spinner_stop(opts) do
-    Owl.Spinner.stop(opts)
-  rescue
-    _ -> :ok
   end
 
   defp show_auth_instructions do
