@@ -5,7 +5,7 @@ defmodule Dust.MixProject do
     [
       apps_path: "apps",
       name: "Dust",
-      version: "0.2.2",
+      version: "0.2.3",
       start_permanent: Mix.env() == :prod,
       listeners: [Phoenix.CodeReloader],
       deps: deps(),

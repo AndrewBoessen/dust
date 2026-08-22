@@ -34,8 +34,18 @@
           # defaults to 1.18.x. Newer nixpkgs `mixRelease`/`fetchMixDeps`
           # no longer accept an `elixir` arg, so scope the whole package
           # set to 1.19 instead and let mixRelease pick it up.
-          beamPackages = (final.beam28Packages or final.beamPackages).extend
-            (bfinal: bprev: { elixir = bprev.elixir_1_19; });
+          #
+          # The scope-override function is named differently across nixpkgs
+          # vintages (`overrideScope` on older beam sets, `extend` on
+          # newer ones), so pick whichever the consumer's nixpkgs exposes.
+          beamPackages =
+            let
+              base = final.beam28Packages or final.beamPackages;
+              overrideElixir = bfinal: bprev: { elixir = bprev.elixir_1_19; };
+            in
+            if base ? overrideScope then base.overrideScope overrideElixir
+            else if base ? overrideScope' then base.overrideScope' overrideElixir
+            else base.extend overrideElixir;
           tsnetSidecar = final.callPackage ./nix/tsnet-sidecar.nix { };
         in
         {
