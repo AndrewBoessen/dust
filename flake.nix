@@ -30,7 +30,12 @@
       # in their NixOS configuration.
       overlays.default = final: prev:
         let
-          beamPackages = final.beam28Packages or final.beamPackages;
+          # The umbrella apps require `elixir ~> 1.19`, but beam28Packages
+          # defaults to 1.18.x. Newer nixpkgs `mixRelease`/`fetchMixDeps`
+          # no longer accept an `elixir` arg, so scope the whole package
+          # set to 1.19 instead and let mixRelease pick it up.
+          beamPackages = (final.beam28Packages or final.beamPackages).extend
+            (bfinal: bprev: { elixir = bprev.elixir_1_19; });
           tsnetSidecar = final.callPackage ./nix/tsnet-sidecar.nix { };
         in
         {

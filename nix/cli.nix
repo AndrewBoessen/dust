@@ -9,17 +9,15 @@
 # release isn't an opaque self-extracting blob.
 let
   pname = "dustctl";
-  version = "0.2.1";
+  version = "0.2.2";
 
   src = ../.;
 
-  # dust_cli's mix.exs requires `elixir ~> 1.19`. The default
-  # `beamPackages.elixir` is 1.18.x; pin explicitly.
-  elixir = beamPackages.elixir_1_19;
-
+  # `beamPackages` is already scoped to elixir 1.19 (see flake.nix
+  # overlay), which dust_cli's mix.exs requires (`elixir ~> 1.19`).
   mixFodDeps = beamPackages.fetchMixDeps {
     pname = "${pname}-mix-deps";
-    inherit src version elixir;
+    inherit src version;
     hash = "sha256-lQIVGkiFPZDQxcrbik7y1VoZbabzsjE0ZHQFd4V261Y=";
 
     env = {
@@ -28,7 +26,7 @@ let
   };
 in
 beamPackages.mixRelease {
-  inherit pname version src mixFodDeps elixir;
+  inherit pname version src mixFodDeps;
 
   releaseType = "release";
   mixEnv = "prod";
