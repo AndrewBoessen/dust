@@ -23,7 +23,7 @@ defmodule Dust.Api.Handlers.StatusHandler do
       ui_port: Dust.Utilities.Config.ui_port(),
       ui_bind: Dust.Utilities.Config.ui_bind(),
       uptime_ms: :erlang.statistics(:wall_clock) |> elem(0),
-      version: "0.2.1"
+      version: "0.2.3"
     }
 
     json_response(conn, 200, status)
