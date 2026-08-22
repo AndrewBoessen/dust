@@ -38,8 +38,8 @@ Once the daemon and `dustctl` are installed:
 
 ```bash
 dustctl daemon start  # start the daemon (all other commands talk to it)
-dustctl auth          # connect node to Tailscale (skip if TS_AUTHKEY is set)
-dustctl init          # setup wizard: data dir, key store unlock, network setup
+dustctl init          # setup wizard: node name, key store, Tailscale, network
+dustctl auth          # finish/confirm Tailscale login
 ```
 
 See [Getting Started](docs/getting-started.md) for the full first-node

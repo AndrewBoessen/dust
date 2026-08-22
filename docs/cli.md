@@ -2,6 +2,26 @@
 
 `dustctl` communicates with the local daemon over HTTP. The daemon must be running for most commands. Run `dustctl help` at any time to see the full command reference.
 
+## First-Time Setup
+
+On a new node these run in order — `dustctl init` before `dustctl auth`:
+
+```bash
+# Start the daemon (all other commands talk to it)
+dustctl daemon start
+
+# Setup wizard: node name, key store, Tailscale start, network setup
+dustctl init
+
+# Finish or confirm the Tailscale login
+dustctl auth
+```
+
+`dustctl auth` cannot produce a login URL until `dustctl init` has run —
+the daemon keeps its Tailscale sidecar stopped until the node has a name
+and a key store. See [Getting Started](getting-started.md) for the full
+walkthrough.
+
 ## File Operations
 
 ```bash
@@ -48,6 +68,12 @@ dustctl status
 
 # Tailscale connectivity details
 dustctl auth status
+
+# Re-check Tailscale, printing a login URL if the node needs one
+dustctl auth
+
+# Clear the local Tailscale state so the node can log in again
+dustctl auth logout
 ```
 
 ## Configuration

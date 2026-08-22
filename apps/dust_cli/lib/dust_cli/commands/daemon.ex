@@ -21,14 +21,14 @@ defmodule Dust.CLI.Commands.Daemon do
         {_output, 0} ->
           Formatter.success("Daemon started")
 
-          Owl.Spinner.start(id: :daemon_ready, labels: %{processing: "Waiting for daemon to become ready..."})
+          Owl.Spinner.start(id: :daemon_ready, labels: [processing: "Waiting for daemon to become ready..."])
 
           case wait_ready(config, 30) do
             :ok ->
-              Owl.Spinner.stop(id: :daemon_ready, resolution: :ok, label: "Daemon is ready")
+              Formatter.spinner_stop(id: :daemon_ready, resolution: :ok, label: "Daemon is ready")
 
             :timeout ->
-              Owl.Spinner.stop(id: :daemon_ready, resolution: :error, label: "Daemon started but readiness check timed out")
+              Formatter.spinner_stop(id: :daemon_ready, resolution: :error, label: "Daemon started but readiness check timed out")
           end
 
           0

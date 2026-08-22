@@ -29,6 +29,33 @@ Once the policy is in place, generate a **tagged auth key** in the admin console
 
 See [Getting Started](getting-started.md) for how to use the auth key when setting up a node.
 
+## Node Names and Erlang Distribution
+
+Each node has a short `node_name`, chosen during `dustctl init` and stored
+in `<persist_dir>/config.yaml`. It has to be unique across the cluster —
+it is both the host part of the node's Erlang atom (`dust@<name>`) and the
+suffix of its Tailscale hostname (`dust-node-<name>`).
+
+Two constraints follow from how peers reach each other. `Dust.Bridge.EPMD`
+routes distribution **by name**: it asks the Tailscale sidecar to resolve
+`dust-node-<name>` to a current tailnet IP and opens a local proxy to it,
+so both peers announce the same `dust@<name>` atom no matter how their IPs
+move.
+
+1. **Node names must not contain a dot.** They are short names
+   (`RELEASE_DISTRIBUTION=sname`), not fully-qualified hostnames. A name
+   with a dot is rejected during connection setup.
+2. **Distribution must stay in short-name mode.** Under long names
+   (`RELEASE_DISTRIBUTION=name`), Erlang rejects any dotless host that is
+   not a literal IP address, and every peer connection fails with
+   `** Hostname <name> is illegal **` — after the bridge has already
+   resolved and proxied the peer, which makes the error look unrelated to
+   naming. `rel/env.sh.eex` and `rel/env.bat.eex` set `sname`; don't
+   override `RELEASE_DISTRIBUTION`.
+
+All nodes in a cluster must agree on this: a long-name node and a
+short-name node cannot connect to each other.
+
 ## Environment Variables
 
 ### Tailscale Networking

@@ -47,14 +47,14 @@ defmodule Dust.CLI.Commands.Init do
         if Owl.IO.confirm(message: "Start the daemon now? (requires release binary)", default: false) do
           Dust.CLI.Commands.Daemon.run(config, ["start"])
 
-          Owl.Spinner.start(id: :daemon_ready, labels: %{processing: "Waiting for daemon..."})
+          Owl.Spinner.start(id: :daemon_ready, labels: [processing: "Waiting for daemon..."])
 
           case wait_for_daemon(config, 30) do
             :ok ->
-              Owl.Spinner.stop(id: :daemon_ready, resolution: :ok, label: "Daemon is ready")
+              Formatter.spinner_stop(id: :daemon_ready, resolution: :ok, label: "Daemon is ready")
 
             :timeout ->
-              Owl.Spinner.stop(id: :daemon_ready, resolution: :error, label: "Daemon did not become ready in time")
+              Formatter.spinner_stop(id: :daemon_ready, resolution: :error, label: "Daemon did not become ready in time")
               return_code(1)
           end
         else
@@ -238,11 +238,11 @@ defmodule Dust.CLI.Commands.Init do
 
     case poll_tailscale(config, @tailscale_poll_total_s) do
       {:authenticated, self_ip} ->
-        spinner_stop(id: :ts_init, resolution: :ok, label: "Tailscale connected (#{self_ip})")
+        Formatter.spinner_stop(id: :ts_init, resolution: :ok, label: "Tailscale connected (#{self_ip})")
         :ok
 
       {:auth_url, url} ->
-        spinner_stop(id: :ts_init, resolution: :ok, label: "Tailscale auth URL is ready")
+        Formatter.spinner_stop(id: :ts_init, resolution: :ok, label: "Tailscale auth URL is ready")
         IO.puts("")
 
         Formatter.info_box("Tailscale Auth", [
@@ -255,7 +255,7 @@ defmodule Dust.CLI.Commands.Init do
         :ok
 
       :still_starting ->
-        spinner_stop(id: :ts_init, resolution: :error, label: "Tailscale did not respond in time")
+        Formatter.spinner_stop(id: :ts_init, resolution: :error, label: "Tailscale did not respond in time")
         Formatter.info("Run 'dustctl auth' shortly to retrieve the login URL.")
         :ok
     end
@@ -278,12 +278,6 @@ defmodule Dust.CLI.Commands.Init do
       _ ->
         poll_tailscale(config, remaining_s - div(@tailscale_poll_interval_ms, 1_000))
     end
-  end
-
-  defp spinner_stop(opts) do
-    Owl.Spinner.stop(opts)
-  rescue
-    _ -> :ok
   end
 
   # ── New network ────────────────────────────────────────────────────────
@@ -331,23 +325,23 @@ defmodule Dust.CLI.Commands.Init do
       Formatter.error("Both peer IP and token are required.")
     else
       IO.puts("")
-      Owl.Spinner.start(id: :join, labels: %{processing: "Joining network at #{peer_ip}..."})
+      Owl.Spinner.start(id: :join, labels: [processing: "Joining network at #{peer_ip}..."])
 
       case Client.post(config, "/api/v1/join", %{peer_address: peer_ip, token: token}) do
         {200, {:ok, %{"status" => "joined"}}} ->
-          Owl.Spinner.stop(id: :join, resolution: :ok, label: "Joined network via #{peer_ip}")
+          Formatter.spinner_stop(id: :join, resolution: :ok, label: "Joined network via #{peer_ip}")
 
         {_, {:ok, %{"error" => reason}}} ->
-          Owl.Spinner.stop(id: :join, resolution: :error, label: "Failed to join: #{reason}")
+          Formatter.spinner_stop(id: :join, resolution: :error, label: "Failed to join: #{reason}")
 
         {:error, {:failed_connect, _}} ->
-          Owl.Spinner.stop(id: :join, resolution: :error, label: "Cannot connect to the daemon")
+          Formatter.spinner_stop(id: :join, resolution: :error, label: "Cannot connect to the daemon")
 
         {:error, {:timeout, _}} ->
-          Owl.Spinner.stop(id: :join, resolution: :error, label: "Request timed out")
+          Formatter.spinner_stop(id: :join, resolution: :error, label: "Request timed out")
 
         {:error, _reason} ->
-          Owl.Spinner.stop(id: :join, resolution: :error, label: "Connection error — is the daemon running?")
+          Formatter.spinner_stop(id: :join, resolution: :error, label: "Connection error — is the daemon running?")
       end
     end
   end
