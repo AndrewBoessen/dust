@@ -9,7 +9,7 @@
 # release isn't an opaque self-extracting blob.
 let
   pname = "dustctl";
-  version = "0.2.0";
+  version = "0.2.1";
 
   src = ../.;
 
@@ -20,7 +20,7 @@ let
   mixFodDeps = beamPackages.fetchMixDeps {
     pname = "${pname}-mix-deps";
     inherit src version elixir;
-    hash = "sha256-UXmd6l9mwIqELDpcBOz1qqGOi9vD3tpog2oAC0Y6evE=";
+    hash = "sha256-lQIVGkiFPZDQxcrbik7y1VoZbabzsjE0ZHQFd4V261Y=";
 
     env = {
       MIX_ENV = "prod";

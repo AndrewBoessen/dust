@@ -36,7 +36,7 @@
 #   and overlaid into `dust_bridge`'s priv dir in `postInstall`.
 let
   pname = "dust";
-  version = "0.2.0";
+  version = "0.2.1";
 
   src = ../.;
 
@@ -50,7 +50,7 @@ let
   mixFodDeps = (beamPackages.fetchMixDeps {
     pname = "${pname}-mix-deps";
     inherit src version;
-    hash = "sha256-Ty37X3THjdwmZz2J9coajo18YZGCZLyulqIUDKGazIo=";
+    hash = "sha256-YIoG5K9+gxVFkpUn1UgrNM87npGYJYuMAcE/s72y4kg=";
 
     # Make `mix deps.get` work in the sandbox.
     env = {
