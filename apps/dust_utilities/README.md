@@ -10,7 +10,7 @@ by adding `utilities` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:utilities, "~> 0.2.4"}
+    {:utilities, "~> 0.2.5"}
   ]
 end
 ```
