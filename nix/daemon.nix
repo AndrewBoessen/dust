@@ -36,7 +36,7 @@
 #   and overlaid into `dust_bridge`'s priv dir in `postInstall`.
 let
   pname = "dust";
-  version = "0.2.4";
+  version = "0.2.5";
 
   src = ../.;
 

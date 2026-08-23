@@ -325,26 +325,60 @@ defmodule Dust.CLI.Commands.Init do
       Formatter.error("Both peer IP and token are required.")
     else
       IO.puts("")
-      Owl.Spinner.start(id: :join, labels: [processing: "Joining network at #{peer_ip}..."])
-
-      case Client.post(config, "/api/v1/join", %{peer_address: peer_ip, token: token}) do
-        {200, {:ok, %{"status" => "joined"}}} ->
-          Formatter.spinner_stop(id: :join, resolution: :ok, label: "Joined network via #{peer_ip}")
-
-        {_, {:ok, %{"error" => reason}}} ->
-          Formatter.spinner_stop(id: :join, resolution: :error, label: "Failed to join: #{reason}")
-
-        {:error, {:failed_connect, _}} ->
-          Formatter.spinner_stop(id: :join, resolution: :error, label: "Cannot connect to the daemon")
-
-        {:error, {:timeout, _}} ->
-          Formatter.spinner_stop(id: :join, resolution: :error, label: "Request timed out")
-
-        {:error, _reason} ->
-          Formatter.spinner_stop(id: :join, resolution: :error, label: "Connection error — is the daemon running?")
-      end
+      join_network(config, peer_ip, token, false)
     end
   end
+
+  defp join_network(config, peer_ip, token, force?) do
+    Owl.Spinner.start(id: :join, labels: [processing: "Joining network at #{peer_ip}..."])
+
+    case Client.post(config, "/api/v1/join", %{
+           peer_address: peer_ip,
+           token: token,
+           force: force?
+         }) do
+      {200, {:ok, %{"status" => "joined"} = response}} ->
+        Formatter.spinner_stop(id: :join, resolution: :ok, label: "Joined network via #{peer_ip}")
+        report_master_key(response["master_key"])
+
+      {409, {:ok, %{"error" => "local_data_exists", "local_data" => local_data}}} ->
+        Formatter.spinner_stop(id: :join, resolution: :error, label: "Join needs confirmation")
+
+        if Dust.CLI.Commands.Cluster.confirm_key_overwrite(local_data) do
+          IO.puts("")
+          join_network(config, peer_ip, token, true)
+        else
+          Formatter.info("Join cancelled — nothing was changed.")
+        end
+
+      {409, {:ok, %{"error" => "key_store_locked"}}} ->
+        Formatter.spinner_stop(id: :join, resolution: :error, label: "Key store is locked")
+        Formatter.info("Run 'dustctl unlock', then 'dustctl join #{peer_ip} <token>'.")
+
+      {_, {:ok, %{"error" => reason}}} ->
+        Formatter.spinner_stop(id: :join, resolution: :error, label: "Failed to join: #{reason}")
+
+      {:error, {:failed_connect, _}} ->
+        Formatter.spinner_stop(id: :join, resolution: :error, label: "Cannot connect to the daemon")
+
+      {:error, {:timeout, _}} ->
+        Formatter.spinner_stop(id: :join, resolution: :error, label: "Request timed out")
+
+      {:error, _reason} ->
+        Formatter.spinner_stop(id: :join, resolution: :error, label: "Connection error — is the daemon running?")
+    end
+  end
+
+  defp report_master_key("adopted"),
+    do: Formatter.success("Adopted the network's master key")
+
+  defp report_master_key("deferred"),
+    do:
+      Formatter.info(
+        "Run 'dustctl unlock' with the network password to adopt the network's master key."
+      )
+
+  defp report_master_key(_), do: :ok
 
   # ── Helpers ────────────────────────────────────────────────────────────
 

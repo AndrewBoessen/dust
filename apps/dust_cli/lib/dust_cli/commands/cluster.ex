@@ -4,7 +4,7 @@ defmodule Dust.CLI.Commands.Cluster do
 
       dustctl nodes
       dustctl invite
-      dustctl join IP TOKEN
+      dustctl join IP TOKEN [--force]
   """
 
   alias Dust.CLI.{Client, Formatter}
@@ -80,28 +80,12 @@ defmodule Dust.CLI.Commands.Cluster do
   # ── join ───────────────────────────────────────────────────────────────
 
   def join(config, args) do
-    case args do
+    {opts, rest, _} = OptionParser.parse(args, strict: [force: :boolean])
+
+    case rest do
       [peer_ip, token | _] ->
         Formatter.info("Joining network at #{peer_ip}...")
-
-        case Client.post(config, "/api/v1/join", %{
-               peer_address: peer_ip,
-               token: token
-             }) do
-          {200, {:ok, %{"status" => "joined"}}} ->
-            Formatter.success("Joined the network via #{peer_ip}")
-            IO.puts("")
-            Formatter.info("Run 'dustctl nodes' to see cluster peers.")
-            Formatter.info("Run 'dustctl unlock' to unlock the key store with the network password.")
-            0
-
-          {_, {:ok, %{"error" => reason}}} ->
-            Formatter.error("Join failed: #{reason}")
-            1
-
-          other ->
-            Formatter.api_error(other)
-        end
+        do_join(config, peer_ip, token, Keyword.get(opts, :force, false))
 
       [_peer_ip] ->
         Formatter.error("Missing invite token")
@@ -116,4 +100,82 @@ defmodule Dust.CLI.Commands.Cluster do
         1
     end
   end
+
+  # ── join helpers ───────────────────────────────────────────────────────
+
+  defp do_join(config, peer_ip, token, force?) do
+    body = %{peer_address: peer_ip, token: token, force: force?}
+
+    case Client.post(config, "/api/v1/join", body) do
+      {200, {:ok, %{"status" => "joined"} = response}} ->
+        Formatter.success("Joined the network via #{peer_ip}")
+        report_master_key(response["master_key"])
+        IO.puts("")
+        Formatter.info("Run 'dustctl nodes' to see cluster peers.")
+        0
+
+      {409, {:ok, %{"error" => "local_data_exists", "local_data" => local_data}}} ->
+        if confirm_key_overwrite(local_data) do
+          IO.puts("")
+          do_join(config, peer_ip, token, true)
+        else
+          Formatter.info("Join cancelled — nothing was changed.")
+          1
+        end
+
+      {409, {:ok, %{"error" => "key_store_locked"}}} ->
+        Formatter.error("The key store is locked")
+        Formatter.info("Run 'dustctl unlock' first so the network's master key can be adopted.")
+        1
+
+      {_, {:ok, %{"error" => reason}}} ->
+        Formatter.error("Join failed: #{reason}")
+        1
+
+      other ->
+        Formatter.api_error(other)
+    end
+  end
+
+  defp report_master_key("adopted"),
+    do: Formatter.success("Adopted the network's master key")
+
+  defp report_master_key("deferred"),
+    do:
+      Formatter.info(
+        "Run 'dustctl unlock' with the network password to adopt the network's master key."
+      )
+
+  defp report_master_key(_), do: :ok
+
+  @doc """
+  Warns that adopting the network's master key orphans local data and asks
+  the user whether to go ahead. Shared with the `dustctl init` wizard.
+  """
+  @spec confirm_key_overwrite(map()) :: boolean()
+  def confirm_key_overwrite(local_data) do
+    IO.puts("")
+
+    Formatter.warning("This node already holds data encrypted with its own master key")
+
+    IO.puts("")
+    Formatter.kv(describe_local_data(local_data))
+    IO.puts("")
+    IO.puts("  Joining adopts the network's master key. Data stored under this")
+    IO.puts("  node's current key becomes permanently unreadable.")
+    IO.puts("")
+
+    Owl.IO.confirm(message: "Adopt the network's master key anyway?", default: false)
+  end
+
+  defp describe_local_data(%{"shards" => "unknown"}), do: [{"Local data", "could not be read"}]
+
+  defp describe_local_data(local_data) when is_map(local_data) do
+    [
+      {"Stored shards", to_string(local_data["shards"] || 0)},
+      {"Files", to_string(local_data["files"] || 0)}
+    ]
+  end
+
+  defp describe_local_data(_), do: [{"Local data", "could not be read"}]
 end

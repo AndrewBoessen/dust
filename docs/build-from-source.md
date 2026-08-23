@@ -198,3 +198,51 @@ mix release dust
 # The release is at _build\prod\rel\dust\
 _build\prod\rel\dust\bin\dust start
 ```
+
+## Building the CLI
+
+The steps above build the **daemon** release (`mix release dust`, defined in
+the umbrella's `mix.exs`). `dustctl` is a separate release defined in
+`apps/dust_cli/mix.exs` and is built from inside that app:
+
+```bash
+cd apps/dust_cli
+MIX_ENV=prod mix release dustctl
+```
+
+It is wrapped with [Burrito](https://github.com/burrito-elixir/burrito) to
+produce the self-contained, per-platform binaries published on the Releases
+page, so this needs Burrito's toolchain (Zig) on top of the dependencies
+above. The wrapped binaries are written to `apps/dust_cli/burrito_out/`.
+
+If you only need a working `dustctl` and not the packaged artifacts, the
+prebuilt binaries on the
+[Releases](https://github.com/AndrewBoessen/dust/releases) page are simpler.
+Nix users can build `dustctl` from the flake (`nix build .#dustctl`), which
+patches Burrito out and produces a plain mix release — no Zig required.
+
+## Running What You Built
+
+Start the daemon from the release you just built:
+
+```bash
+_build/prod/rel/dust/bin/dust start
+```
+
+The daemon stores everything under `DUST_DATA_DIR` (default `~/.dust`) and
+reads its Erlang node name from `<data-dir>/node_name`, which
+`dustctl init` writes. On a fresh build there is nothing there yet, so the
+node starts under the placeholder name `dust` until the setup wizard names
+it — this is expected, and the name takes effect on the next restart.
+
+With the daemon running, follow
+[Getting Started](getting-started.md) from step 3:
+
+```bash
+dustctl init   # node name, key store, Tailscale, network setup
+dustctl auth   # finish/confirm the Tailscale login
+```
+
+`dustctl init` must run before `dustctl auth` — the daemon holds its
+Tailscale sidecar back until the node has a name and a key store.
+

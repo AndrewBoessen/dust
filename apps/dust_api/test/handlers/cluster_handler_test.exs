@@ -21,6 +21,110 @@ defmodule Dust.Api.Handlers.ClusterHandlerTest do
     :ok
   end
 
+  describe "join/1" do
+    setup do
+      secrets_path = Dust.Utilities.File.secrets_file()
+      File.rm(secrets_path)
+
+      # A node holding its own master key and no data — the state a fresh
+      # node is in when it joins an existing network.
+      _ = KeyStore.lock()
+      Dust.Bridge.Secrets.clear_fetched_master_key()
+      File.rm(Dust.Utilities.File.master_key_file())
+      :ok = KeyStore.unlock("join_handler_password")
+
+      # The umbrella shares one persist_dir, so storage and the mesh may
+      # still hold data written by an earlier app's suite.
+      for {chunk_hash, index} <- Dust.Storage.list_local_shard_keys() do
+        Dust.Storage.delete_shard(chunk_hash, index)
+      end
+
+      for {id, _entry} <- Dust.Mesh.FileSystem.FileMap.all() do
+        Dust.Mesh.FileSystem.FileMap.delete(id)
+      end
+
+      on_exit(fn ->
+        File.rm(secrets_path)
+        KeyStore.lock()
+      end)
+
+      {:ok, secrets_path: secrets_path}
+    end
+
+    defp join_conn(params) do
+      conn(:post, "/api/v1/join")
+      |> Map.put(:body_params, params)
+      |> ClusterHandler.join()
+    end
+
+    test "adopts the peer's cookie and master key", %{secrets_path: secrets_path} do
+      network_key = :crypto.strong_rand_bytes(32)
+
+      expect(Dust.Bridge.Mock, :join, fn "100.64.0.7", "invite-token" ->
+        {:ok, Base.encode64(network_key), "peer-cookie-abc123"}
+      end)
+
+      conn = join_conn(%{"peer_address" => "100.64.0.7", "token" => "invite-token"})
+
+      assert conn.status == 200
+      body = Jason.decode!(conn.resp_body)
+      assert body["status"] == "joined"
+      assert body["master_key"] == "adopted"
+
+      # Retrieving the secrets is not enough — a node that does not adopt
+      # the peer's cookie keeps its own and is rejected by every peer with
+      # "Invalid challenge reply".
+      assert File.read!(secrets_path) == "peer-cookie-abc123"
+      assert {:ok, ^network_key} = KeyStore.get_key()
+    end
+
+    test "returns 409 with the local data counts when the node holds data" do
+      :ok = Dust.Storage.put_shard("handlerjointest", 0, "encrypted-payload")
+      on_exit(fn -> Dust.Storage.delete_shard("handlerjointest", 0) end)
+
+      expect(Dust.Bridge.Mock, :join, fn _peer, _token ->
+        {:ok, Base.encode64(:crypto.strong_rand_bytes(32)), "peer-cookie-abc123"}
+      end)
+
+      conn = join_conn(%{"peer_address" => "100.64.0.7", "token" => "invite-token"})
+
+      assert conn.status == 409
+      body = Jason.decode!(conn.resp_body)
+      assert body["error"] == "local_data_exists"
+      assert body["local_data"]["shards"] == 1
+    end
+
+    test "adopts anyway when force is set", %{secrets_path: secrets_path} do
+      :ok = Dust.Storage.put_shard("handlerjointest", 0, "encrypted-payload")
+      on_exit(fn -> Dust.Storage.delete_shard("handlerjointest", 0) end)
+
+      network_key = :crypto.strong_rand_bytes(32)
+
+      expect(Dust.Bridge.Mock, :join, fn _peer, _token ->
+        {:ok, Base.encode64(network_key), "peer-cookie-abc123"}
+      end)
+
+      conn =
+        join_conn(%{
+          "peer_address" => "100.64.0.7",
+          "token" => "invite-token",
+          "force" => true
+        })
+
+      assert conn.status == 200
+      assert File.read!(secrets_path) == "peer-cookie-abc123"
+      assert {:ok, ^network_key} = KeyStore.get_key()
+    end
+
+    test "reports the bridge error when the join itself fails" do
+      expect(Dust.Bridge.Mock, :join, fn _, _ -> {:error, :invalid_token} end)
+
+      conn = join_conn(%{"peer_address" => "100.64.0.7", "token" => "bad"})
+
+      assert conn.status == 400
+    end
+  end
+
   describe "create_invite/1 when keystore is unlocked" do
     setup do
       # The umbrella's global persist_dir is shared across apps' test suites,
