@@ -140,19 +140,92 @@ dustctl auth status
 
 ## 5. Adding More Nodes
 
-If you chose "Create a new network" in the wizard, your node is already its own cluster. To add another node, generate an invite token on this node and use it from the new one:
+If you chose "Create a new network" in the wizard, your node is already its
+own cluster. Adding a second node takes an invite from the existing node.
+
+### On the existing node
+
+The key store must be **unlocked** — the invite hands the joiner the
+network's secrets, and a locked node has none to give:
 
 ```bash
-# On the existing node
+dustctl unlock   # if the key store is locked
 dustctl invite
+```
 
-# On the new node (use the IP and token printed above)
+This prints the node's Tailscale IP and a token. The token is
+**single-use and expires after 10 minutes**, and locking the key store
+invalidates any outstanding tokens. Generate a fresh one if either
+happens.
+
+### On the new node
+
+Work through steps 1–4 of this guide on the new machine first — install,
+start the daemon, `dustctl init`, `dustctl auth`. The node has to be
+connected to Tailscale before it can reach a peer.
+
+At the wizard's last step choose **"Join an existing network"** and paste
+the IP and token. If you skipped it, or the token expired, join later with:
+
+```bash
 dustctl join <IP> <TOKEN>
 ```
 
-Each new node goes through this same guide first — install, start the
-daemon, `dustctl init`, `dustctl auth` — and only then joins with the
-token above.
+### What joining actually does
+
+The joining node contacts the peer over Tailscale and adopts two secrets
+from it:
+
+- the **OTP cookie**, which makes it a member of the Erlang cluster.
+  Without it every peer rejects its handshake with
+  `Invalid challenge reply`;
+- the **master key**, which unwraps the per-file keys. Without it the node
+  cannot read any file the cluster already holds, and the files it writes
+  are unreadable to everyone else.
+
+Because `dustctl init` creates a key store (step 3) *before* the join step,
+a node that ran the full wizard already minted a master key of its own. The
+join therefore asks before replacing it:
+
+```
+! This node already holds data encrypted with its own master key
+
+  Stored shards  12
+  Files          3
+
+  Joining adopts the network's master key. Data stored under this
+  node's current key becomes permanently unreadable.
+
+Adopt the network's master key anyway? [yN]:
+```
+
+On a new node there is nothing to lose — answer **yes**. If the node
+holds no data at all, the key is adopted without asking. To skip the
+prompt in a script, pass `--force`:
+
+```bash
+dustctl join <IP> <TOKEN> --force
+```
+
+Declining changes nothing: the node keeps its own key and does **not**
+join, rather than half-joining with the wrong key.
+
+### Passphrases are per-node
+
+There is no shared "network password". Adopting the master key re-encrypts
+it under the passphrase you chose on *that* node, so each node keeps its
+own. Unlock each node with its own passphrase.
+
+### Confirm the cluster
+
+From either machine:
+
+```bash
+dustctl nodes
+```
+
+Both nodes should be listed. It can take up to 15 seconds for peer
+discovery to notice a newly joined node.
 
 You are now ready to use Dust. See the [CLI Reference](cli.md) for a full list of commands.
 
@@ -161,6 +234,44 @@ You are now ready to use Dust. See the [CLI Reference](cli.md) for a full list o
 The key store stays unlocked until you explicitly lock it or the daemon restarts. After a restart you'll need to unlock again before performing file operations:
 
 ```bash
-dustctl unlock   # prompts for the passphrase
-dustctl lock     # lock the key store
+dustctl unlock                      # prompts for the passphrase
+dustctl unlock --password <PASS>    # non-interactive
+dustctl lock                        # lock the key store
 ```
+
+Locking also stops the node serving secrets to joiners and invalidates any
+outstanding invite tokens.
+
+## Troubleshooting
+
+**`dustctl auth` prints "Could not retrieve auth URL"**
+The node has not been through `dustctl init` yet. The daemon holds the
+Tailscale sidecar back until the node has a name and a key store, so there
+is no session to log in to. Run `dustctl init` first — see
+[Setup Order](#setup-order).
+
+**The daemon log repeats `** Hostname <name> is illegal **`**
+Node names must not contain a dot, and every node in a cluster must run a
+version that uses short-name Erlang distribution. Check
+[Configuration → Node Names and Erlang Distribution](configuration.md#node-names-and-erlang-distribution).
+
+**The daemon log repeats `Connection attempt from node ... rejected. Invalid challenge reply.`**
+The other node never adopted the network's OTP cookie, so it is using one
+of its own. Re-run the join on that node.
+
+**Downloads fail but `dustctl ls` lists the files**
+The node holds a different master key from the rest of the cluster, so it
+cannot unwrap the per-file keys. Re-run the join on that node and accept
+the master key replacement.
+
+**`dustctl invite` returns "Unlock the key store before issuing an invite"**
+The invite hands over the network's secrets, so the issuing node must be
+unlocked. Run `dustctl unlock` and issue a fresh token.
+
+**`dustctl join` reports the key store is locked**
+The joining node needs an unlocked key store so the network's master key
+can be written under its passphrase. Run `dustctl unlock`, then join again.
+
+**`dustctl help` and `dustctl version`** work with no daemon running, before
+`dustctl init`, and before Tailscale is authenticated. If any other command
+reports "Not connected to Tailscale", finish [step 4](#4-authenticate-to-tailscale).

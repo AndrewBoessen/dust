@@ -42,6 +42,13 @@ dustctl init          # setup wizard: node name, key store, Tailscale, network
 dustctl auth          # finish/confirm Tailscale login
 ```
 
+To add a second node, run those three on the new machine, then:
+
+```bash
+dustctl invite             # on the existing node (must be unlocked)
+dustctl join <IP> <TOKEN>  # on the new node
+```
+
 See [Getting Started](docs/getting-started.md) for the full first-node
 walkthrough, including joining an existing cluster and installing the
 daemon as a system service.
