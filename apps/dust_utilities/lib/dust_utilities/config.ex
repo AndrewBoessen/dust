@@ -205,7 +205,12 @@ defmodule Dust.Utilities.Config do
       new_config = Map.put(config, key, value)
       Application.put_env(:dust_utilities, :config, new_config)
       save_yaml!(new_config)
-      if key == :node_name, do: save_node_name_file!(new_config)
+
+      if key == :node_name do
+        save_node_name_file!(new_config)
+        if config[:node_name] != value, do: migrate_secrets_file(config[:node_name], value)
+      end
+
       :ok
     end
   end
@@ -358,6 +363,34 @@ defmodule Dust.Utilities.Config do
   defp save_node_name_file!(config) do
     path = Path.join(Map.fetch!(config, :persist_dir), @node_name_file)
     File.write!(path, Map.fetch!(config, :node_name) <> "\n")
+  end
+
+  # Carries the persisted OTP cookie forward across a rename.
+  #
+  # `Dust.Utilities.File.secrets_file/1` is keyed by node name, and the
+  # currently-running node keeps applying/looking up its cookie under
+  # `old_name` until the daemon restarts (`Node.self()` doesn't change
+  # mid-boot). Without this, anything that re-resolves the secrets path
+  # before that restart — most notably `Dust.Bridge.Secrets.setup/0`,
+  # which runs again a second after `dustctl init` starts Tailscale —
+  # finds nothing under `new_name` and silently mints a fresh cookie,
+  # discarding the one already applied.
+  @spec migrate_secrets_file(String.t() | nil, String.t()) :: :ok
+  defp migrate_secrets_file(old_name, new_name) do
+    old_path = Dust.Utilities.File.secrets_file(old_name || "dust")
+    new_path = Dust.Utilities.File.secrets_file(new_name)
+
+    if old_path != new_path and File.exists?(old_path) and not File.exists?(new_path) do
+      File.mkdir_p!(Path.dirname(new_path))
+      File.rename!(old_path, new_path)
+      Logger.info("Config: migrated OTP cookie from #{old_path} to #{new_path}")
+    end
+
+    :ok
+  rescue
+    e ->
+      Logger.warning("Config: failed to migrate OTP cookie on rename: #{inspect(e)}")
+      :ok
   end
 
   @spec encode_yaml(map()) :: String.t()

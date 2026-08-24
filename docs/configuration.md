@@ -56,6 +56,27 @@ move.
 All nodes in a cluster must agree on this: a long-name node and a
 short-name node cannot connect to each other.
 
+### Renaming requires a restart
+
+Erlang fixes a node's distribution identity (`Node.self/0`) at VM boot,
+built from the `node_name` file the release's boot script reads before
+the Elixir VM even starts. Changing `node_name` at runtime — via
+`dustctl init`, `dustctl config set node_name <name>`, or the Web UI —
+updates `config.yaml` and that file immediately, but the *running*
+process keeps answering to its old identity until it actually restarts.
+Nothing that depends on the name being current (bringing up Tailscale,
+joining a network) can be trusted until that happens.
+
+`dustctl init` restarts the daemon itself right after a rename, detecting
+whether it's running as a system service or was started manually and
+using the matching mechanism — this may prompt for a password on a
+service-managed install. The Web UI's setup wizard does not automate
+this (restarting the very daemon serving the page mid-session isn't
+straightforward); it shows the exact restart command to run by hand
+instead when a rename needs one. See
+[Getting Started](getting-started.md#3-run-the-setup-wizard) and
+[Getting Started → Using the Web UI Instead](getting-started.md#using-the-web-ui-instead).
+
 ## Environment Variables
 
 ### Tailscale Networking

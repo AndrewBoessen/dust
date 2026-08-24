@@ -22,6 +22,17 @@ the daemon keeps its Tailscale sidecar stopped until the node has a name
 and a key store. See [Getting Started](getting-started.md) for the full
 walkthrough.
 
+If you change the node's name, `dustctl init` restarts the daemon for you
+before continuing — Erlang's node identity is fixed at boot, so nothing
+past that point (Tailscale, joining) can trust a name that only exists in
+config until the process actually restarts. This may prompt for your
+password if Dust runs as a system service, the same as `dustctl daemon
+install` already does. If it can't confirm the restart, it stops and
+tells you to restart manually and run `dustctl init` again.
+
+Prefer a browser? See [Web UI](#web-ui) below — it's a full alternative
+to this wizard, with one difference worth knowing before you use it.
+
 ## File Operations
 
 ```bash
@@ -123,8 +134,22 @@ dustctl ui open
 dustctl ui status
 ```
 
-The UI covers the same first-time setup as `dustctl init`, including
-joining an existing network.
+The UI covers the same first-time setup as `dustctl init` — naming the
+node, the key-store passphrase, Tailscale (it shows the login URL and
+waits inline, so there's no separate `dustctl auth` step), and
+create-or-join — as long as no key store exists yet; visiting the address
+directly redirects there automatically in that case.
+
+**Unlike `dustctl init`, it does not restart the daemon for you.** A
+rename needs that restart for the same reason noted above, but the
+restart can't be automated safely from a page the daemon itself is
+serving — the browser session would need to survive the daemon
+disappearing out from under it. Choosing **join** completes the cookie
+and master-key adoption normally, then shows a **"Joined — one more
+step"** screen with the exact restart command for your platform; run it,
+then reload and log in. Choosing **create** doesn't need a restart before
+you finish (there's no peer yet), but restart before inviting anyone, for
+the same reason.
 
 ## Garbage Collection
 

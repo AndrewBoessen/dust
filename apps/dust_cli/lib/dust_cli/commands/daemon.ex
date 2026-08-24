@@ -11,6 +11,91 @@ defmodule Dust.CLI.Commands.Daemon do
 
   alias Dust.CLI.{Client, Formatter}
 
+  @doc """
+  Restarts the daemon so a freshly-chosen node name takes effect.
+
+  Erlang's node identity (`Node.self()`) is fixed for the life of the VM —
+  it's built once at boot from `RELEASE_NODE`, which the release's boot
+  script derives from the `node_name` file. Renaming the node only writes
+  new values to `config.yaml` and that file; the *running* VM keeps
+  answering to its old identity until it's actually restarted. Used by
+  `dustctl init` right after the node-name step, before unlock/Tailscale/
+  network setup — those all assume `Node.self()` already matches the
+  chosen name.
+
+  Restarts by shelling out directly from this CLI process — never by
+  asking the daemon's own `/api/v1/service/*` API to restart itself: that
+  handler runs `systemctl stop dust` synchronously, and if it ran inside
+  a request handled *by* the process being stopped, the command would
+  block waiting for this same process to exit while this process is
+  blocked waiting on the command. The CLI is a separate OS process, so it
+  can issue and wait on these commands safely.
+
+  Returns `:ok` once the daemon answers again, or `{:error, reason}` if
+  the restart could not be confirmed within the timeout — callers should
+  fall back to telling the user to restart manually and re-run `init`.
+  """
+  @spec restart_for_rename(map()) :: :ok | {:error, term()}
+  def restart_for_rename(config) do
+    with :ok <- do_restart(service_mode(config)) do
+      wait_ready(config, 30)
+    end
+  end
+
+  # Only a systemd/launchd/WinSW-managed daemon is *actually* running.
+  # Anything else (not installed, or the status check itself fails) means
+  # this daemon was started directly (e.g. `dustctl daemon start`), so the
+  # release binary's own stop/start is the right tool.
+  defp service_mode(config) do
+    case Client.get(config, "/api/v1/service/status") do
+      {200, {:ok, %{"status" => "running"}}} -> :service
+      _ -> :manual
+    end
+  end
+
+  defp do_restart(:service) do
+    case :os.type() do
+      {:unix, :linux} -> run_and_check("sudo", ["systemctl", "restart", "dust"])
+      {:unix, :darwin} -> restart_launchd()
+      {:win32, _} -> restart_winsw()
+      other -> {:error, {:unsupported_os, other}}
+    end
+  end
+
+  defp do_restart(:manual) do
+    case find_release_bin() do
+      nil ->
+        {:error, :release_binary_not_found}
+
+      release_bin ->
+        # Best-effort: a fresh first-time-setup daemon is expected to
+        # already be running, so a failed "stop" here (e.g. it wasn't up
+        # for some reason) shouldn't block the restart attempt.
+        _ = System.cmd(release_bin, ["stop"], stderr_to_stdout: true)
+        run_and_check(release_bin, ["start"])
+    end
+  end
+
+  defp restart_launchd do
+    plist = Path.join(System.user_home!(), "Library/LaunchAgents/com.dust.daemon.plist")
+    _ = System.cmd("launchctl", ["unload", plist], stderr_to_stdout: true)
+    run_and_check("launchctl", ["load", plist])
+  end
+
+  defp restart_winsw do
+    _ = System.cmd("net", ["stop", "dust"], stderr_to_stdout: true)
+    run_and_check("net", ["start", "dust"])
+  end
+
+  defp run_and_check(cmd, args) do
+    case System.cmd(cmd, args, stderr_to_stdout: true) do
+      {_output, 0} -> :ok
+      {output, code} -> {:error, {:command_failed, cmd, args, code, output}}
+    end
+  rescue
+    e -> {:error, {:command_error, cmd, Exception.message(e)}}
+  end
+
   def run(config, ["start" | _]) do
     Formatter.info("Starting the Dust daemon...")
 
@@ -145,7 +230,15 @@ defmodule Dust.CLI.Commands.Daemon do
       "bin/dust"
     ]
 
-    Enum.find(candidates, &File.exists?/1)
+    case Enum.find(candidates, &File.exists?/1) do
+      nil ->
+        # A Nix-installed daemon (e.g. via the flake overlay) doesn't sit
+        # at any of the paths above — it's a store path exposed on PATH.
+        System.find_executable("dust")
+
+      path ->
+        path
+    end
   end
 
   defp wait_ready(_config, 0), do: :timeout
