@@ -128,7 +128,10 @@ beamPackages.mixRelease {
   # we don't pull), and dust doesn't use posting-list bitmap operations,
   # so disable it via the env var that the rocksdb rebar pre_hook passes
   # to `./do_cmake.sh`.
-  ERLANG_ROCKSDB_OPTS = "-DWITH_CROARING=OFF";
+
+  env = {
+    ERLANG_ROCKSDB_OPTS = "-DWITH_CROARING=OFF";
+  };
 
   # Wire vendored cargo deps into each NIF's source tree before mix
   # invokes rustler. This MUST happen in preConfigure — mixRelease's
