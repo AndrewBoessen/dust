@@ -151,7 +151,15 @@ defmodule Dust.Ui.SetupLive do
     # a node that already holds data unless `force: true` confirms it.
     case Dust.Daemon.Join.join(socket.assigns.peer_ip, socket.assigns.token, force: force?) do
       {:ok, _master_key_outcome} ->
-        {:noreply, push_navigate(socket, to: ~p"/setup/complete?t=#{setup_token()}")}
+        # The join has genuinely adopted the network's cookie and master
+        # key at this point — but Node.self() is fixed for the life of
+        # this VM and was set at boot, before this node had its final
+        # name. Until the daemon restarts, this node cannot actually
+        # complete an Erlang distribution handshake with any peer, no
+        # matter how correct the cookie now is. Navigating straight to
+        # the dashboard here would look like success while every peer
+        # connection silently fails.
+        {:noreply, assign(socket, busy?: false, step: :restart_required)}
 
       {:error, :local_data_exists, local_data} ->
         {:noreply,
@@ -223,6 +231,8 @@ defmodule Dust.Ui.SetupLive do
             </.progress_card>
           <% :await_tailscale -> %>
             <.await_tailscale_card tailscale={@tailscale} />
+          <% :restart_required -> %>
+            <.restart_required_card />
         <% end %>
       </div>
     </div>
@@ -402,6 +412,59 @@ defmodule Dust.Ui.SetupLive do
 
       <p class="text-xs">
         Once Tailscale is authenticated, this page will continue automatically.
+      </p>
+    </div>
+    """
+  end
+
+  defp restart_required_card(assigns) do
+    ~H"""
+    <div class="space-y-4 rounded-lg border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900 shadow-sm">
+      <div>
+        <p class="font-medium">Joined — one more step</p>
+        <p class="mt-1 text-amber-800">
+          This node has adopted the network's credentials, but it won't actually
+          be reachable by other nodes until the Dust daemon restarts. Erlang
+          (the runtime Dust is built on) fixes a node's identity when it starts
+          up, and this node was still using its placeholder identity when setup
+          began.
+        </p>
+      </div>
+
+      <div class="space-y-3 border-t border-amber-200 pt-3 text-xs">
+        <div>
+          <p class="font-medium uppercase tracking-wide">Linux (systemd)</p>
+          <code class="mt-1 block rounded bg-amber-100 px-2 py-1 font-mono">
+            sudo systemctl restart dust
+          </code>
+        </div>
+
+        <div>
+          <p class="font-medium uppercase tracking-wide">macOS (launchd)</p>
+          <code class="mt-1 block rounded bg-amber-100 px-2 py-1 font-mono">
+            launchctl unload ~/Library/LaunchAgents/com.dust.daemon.plist<br />
+            launchctl load ~/Library/LaunchAgents/com.dust.daemon.plist
+          </code>
+        </div>
+
+        <div>
+          <p class="font-medium uppercase tracking-wide">Windows</p>
+          <code class="mt-1 block rounded bg-amber-100 px-2 py-1 font-mono">
+            net stop dust && net start dust
+          </code>
+        </div>
+
+        <div>
+          <p class="font-medium uppercase tracking-wide">Manually-started daemon</p>
+          <code class="mt-1 block rounded bg-amber-100 px-2 py-1 font-mono">
+            dustctl daemon stop && dustctl daemon start
+          </code>
+        </div>
+      </div>
+
+      <p class="border-t border-amber-200 pt-3 text-xs">
+        After restarting, reload this page and log in with your keystore
+        password — the network connection will be complete.
       </p>
     </div>
     """

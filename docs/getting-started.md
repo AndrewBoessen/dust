@@ -13,6 +13,11 @@ All `dustctl` commands except `daemon start` talk to the local daemon
 over HTTP, so the daemon needs to be running before you can run the
 setup wizard, authenticate, or operate on files.
 
+First-time setup has two equivalent front ends: the `dustctl init`
+wizard below, or [a browser wizard the daemon itself
+serves](#using-the-web-ui-instead). Both walk through the same steps;
+pick whichever you'd rather use.
+
 ## Setup Order
 
 Run the steps below in order. In particular, **`dustctl init` must be run
@@ -98,17 +103,27 @@ The wizard will:
 3. Prompt for a **node name**. This is the node's unique short name — it
    becomes the host part of the Erlang node (`dust@<name>`) and the
    suffix of the Tailscale hostname (`dust-node-<name>`), so it must be
-   unique across the cluster. Press Enter to keep the current value. The
-   Erlang VM reads the name at boot, so a change takes effect on the
-   next daemon restart.
-4. Prompt for a **key-store passphrase** — on first use this creates a
+   unique across the cluster. Press Enter to keep the current value.
+4. **Restart the daemon**, if you changed the name. Erlang fixes a
+   node's identity at boot, so nothing below this point — Tailscale,
+   joining a network — can work correctly until the running daemon
+   actually picks up the new name. `dustctl init` does this for you:
+   it detects whether Dust is running as a system service or was
+   started manually, stops and restarts it the matching way, and waits
+   for it to come back up. This may prompt for your password if Dust
+   runs as a systemd/launchd/Windows service — that's expected, the same
+   as `dustctl daemon install` already asks for it. If the restart can't
+   be confirmed within its timeout, the wizard stops and tells you to
+   restart manually and run `dustctl init` again — nothing is lost by
+   doing so.
+5. Prompt for a **key-store passphrase** — on first use this creates a
    new key, on later runs it unlocks the existing one.
-5. **Start Tailscale.** Now that the node name is settled, the wizard
+6. **Start Tailscale.** Now that the node name is settled, the wizard
    starts the sidecar and waits up to 45 seconds for it to come up. If
    `TS_AUTHKEY` was set in the daemon's environment the node connects on
    its own; otherwise the wizard prints an interactive login URL — open
    it in a browser to authenticate the node.
-6. Offer to create a new network (this node becomes the genesis node) or
+7. Offer to create a new network (this node becomes the genesis node) or
    join an existing one.
 
 Follow the on-screen prompts to finish setup.
@@ -117,6 +132,41 @@ A cold sidecar start can take longer than the wizard waits. If it
 reports that Tailscale did not respond in time, or if you did not
 finish the browser login while it was running, pick it up with
 `dustctl auth` in the next step — nothing is lost.
+
+### Using the Web UI Instead
+
+Everything above — naming the node, the passphrase, Tailscale, and
+create-or-join — is also available as a browser wizard served by the
+daemon itself. Once the daemon is running:
+
+```bash
+dustctl ui open
+```
+
+This resolves the daemon's UI address and opens it in your default
+browser (default `http://127.0.0.1:4885`); use `dustctl ui status` to
+just print the URL and check it's reachable without opening anything.
+Visiting the address directly works too — the daemon redirects to the
+setup wizard on its own as long as no key store exists yet.
+
+The browser wizard covers Tailscale authentication itself (it shows the
+login URL inline and waits for you), so if you use it you can skip
+[step 4, Authenticate to Tailscale](#4-authenticate-to-tailscale)
+entirely — go straight to [Adding More Nodes](#5-adding-more-nodes), or
+you're done if you created a new network.
+
+**The one thing it does *not* do is restart the daemon for you.** A
+rename needs that restart for the same reason described above, but
+automating it safely from inside a page the daemon itself is serving —
+the browser session would need to survive the daemon disappearing out
+from under it — isn't done here. If you choose **join**, the wizard
+completes the adoption of the network's cookie and master key, then
+shows a **"Joined — one more step"** screen with the exact restart
+command for your platform. Run it, then reload the page and log in with
+your keystore password — the connection will be complete by then. If you
+choose **create**, no restart is required before you finish (there's no
+peer to connect to yet) — but restart before you invite anyone, for the
+same reason.
 
 ## 4. Authenticate to Tailscale
 
@@ -170,6 +220,12 @@ the IP and token. If you skipped it, or the token expired, join later with:
 ```bash
 dustctl join <IP> <TOKEN>
 ```
+
+Or use [the Web UI](#using-the-web-ui-instead) instead of `dustctl init` —
+choose **"Join an existing network"** there and paste the same IP and
+token. Remember its one difference: after a successful join it shows a
+restart-required screen rather than restarting for you, so follow the
+command it prints before continuing.
 
 ### What joining actually does
 
@@ -258,6 +314,14 @@ version that uses short-name Erlang distribution. Check
 **The daemon log repeats `Connection attempt from node ... rejected. Invalid challenge reply.`**
 The other node never adopted the network's OTP cookie, so it is using one
 of its own. Re-run the join on that node.
+
+**A node joined successfully but never shows up in `dustctl nodes` / the peer list stays empty**
+Most likely it needs the restart described above and hasn't had it yet.
+`dustctl init` restarts automatically; the Web UI wizard shows a
+"Joined — one more step" screen with the command instead of restarting
+for you — if that screen was skipped or missed, restart the daemon
+manually (see [Using the Web UI Instead](#using-the-web-ui-instead)) and
+check again.
 
 **Downloads fail but `dustctl ls` lists the files**
 The node holds a different master key from the rest of the cluster, so it

@@ -67,8 +67,14 @@ defmodule Dust.CLI.Commands.Init do
 
     # Step 3: Node name (must happen BEFORE Tailscale starts — changing
     # the name later forces a re-auth because Tailscale identity is keyed
-    # by hostname).
-    setup_node_name(config)
+    # by hostname). A rename also requires an actual daemon restart before
+    # anything below this point: Node.self() is fixed at VM boot and does
+    # not change just because config.yaml did, and both Tailscale's
+    # startup and the mesh join depend on it already being correct.
+    case setup_node_name(config) do
+      :renamed -> restart_daemon_for_rename(config)
+      :unchanged -> :ok
+    end
 
     IO.puts("")
 
@@ -183,23 +189,57 @@ defmodule Dust.CLI.Commands.Init do
     cond do
       chosen == current ->
         Formatter.dim("  Keeping current node name: #{current}")
+        :unchanged
 
       not valid_node_name?(chosen) ->
         Formatter.error("Invalid node name '#{chosen}'.")
         Formatter.info("Must be 1-63 chars, start with a letter/digit, contain only letters, digits, '-' or '_'.")
+        :unchanged
 
       true ->
         case Client.put(config, "/api/v1/config", %{node_name: chosen}) do
           {200, _} ->
             Formatter.success("Node name set to '#{chosen}'")
-            Formatter.dim("  Takes effect on next daemon restart.")
+            :renamed
 
           {_, {:ok, %{"results" => results}}} ->
             Formatter.error("Failed to set node name: #{inspect(results[to_string(:node_name)])}")
+            :unchanged
 
           other ->
             Formatter.api_error(other)
+            :unchanged
         end
+    end
+  end
+
+  # A rename only touches config.yaml/node_name on disk — Node.self() is
+  # fixed at VM boot, so nothing below this point (unlock, Tailscale,
+  # join/create) can trust it until the daemon actually restarts.
+  defp restart_daemon_for_rename(config) do
+    Formatter.info("Restarting the daemon so the new node name takes effect...")
+    Formatter.dim("  This may prompt for your password if Dust runs as a system service.")
+    IO.puts("")
+
+    Owl.Spinner.start(id: :rename_restart, labels: [processing: "Restarting daemon..."])
+
+    case Dust.CLI.Commands.Daemon.restart_for_rename(config) do
+      :ok ->
+        Formatter.spinner_stop(id: :rename_restart, resolution: :ok, label: "Daemon restarted")
+
+      {:error, reason} ->
+        Formatter.spinner_stop(
+          id: :rename_restart,
+          resolution: :error,
+          label: "Could not restart the daemon automatically"
+        )
+
+        IO.puts("")
+        Formatter.error("Reason: #{inspect(reason)}")
+        IO.puts("")
+        Formatter.info("Restart it yourself, then run 'dustctl init' again to continue:")
+        Owl.IO.puts(["    ", Owl.Data.tag("sudo systemctl restart dust", :bright), Owl.Data.tag("   (or your platform's equivalent)", :faint)])
+        return_code(1)
     end
   end
 

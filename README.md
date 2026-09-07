@@ -42,7 +42,12 @@ dustctl init          # setup wizard: node name, key store, Tailscale, network
 dustctl auth          # finish/confirm Tailscale login
 ```
 
-To add a second node, run those three on the new machine, then:
+Optionally `dustctl ui open` (once the daemon is running) opens the
+same wizard at `http://127.0.0.1:4885` — the daemon redirects there on its
+own as long as no key store exists yet.
+
+To add a second node, run those three (or the Web UI wizard) on the new
+machine, then:
 
 ```bash
 dustctl invite             # on the existing node (must be unlocked)

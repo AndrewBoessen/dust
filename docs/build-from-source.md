@@ -230,10 +230,11 @@ _build/prod/rel/dust/bin/dust start
 ```
 
 The daemon stores everything under `DUST_DATA_DIR` (default `~/.dust`) and
-reads its Erlang node name from `<data-dir>/node_name`, which
-`dustctl init` writes. On a fresh build there is nothing there yet, so the
-node starts under the placeholder name `dust` until the setup wizard names
-it — this is expected, and the name takes effect on the next restart.
+reads its Erlang node name from `<data-dir>/node_name`, which the setup
+wizard writes. On a fresh build there is nothing there yet, so the node
+starts under the placeholder name `dust` until the wizard names it —
+this is expected; `dustctl init` restarts the daemon itself once you've
+chosen a name, so the new identity is live by the time setup continues.
 
 With the daemon running, follow
 [Getting Started](getting-started.md) from step 3:
@@ -245,4 +246,11 @@ dustctl auth   # finish/confirm the Tailscale login
 
 `dustctl init` must run before `dustctl auth` — the daemon holds its
 Tailscale sidecar back until the node has a name and a key store.
+
+No `dustctl` build handy yet? The same wizard is served over HTTP by the
+daemon itself — point a browser at `http://127.0.0.1:4885` (no CLI
+required) and it redirects there automatically as long as no key store
+exists. See [Getting Started → Using the Web UI Instead](getting-started.md#using-the-web-ui-instead)
+for the one difference: it can't restart the daemon for you after a
+rename, so it shows the command to run by hand instead.
 

@@ -38,6 +38,49 @@ defmodule Dust.Utilities.ConfigTest do
       assert yaml =~ "node_name: alice"
     end
 
+    test "put/2 carries an existing OTP cookie forward under the new name", %{tmp_dir: _tmp_dir} do
+      Config.load!()
+
+      old_secrets = Dust.Utilities.File.secrets_file("dust")
+      File.mkdir_p!(Path.dirname(old_secrets))
+      File.write!(old_secrets, "the-genesis-cookie")
+
+      assert :ok = Config.put(:node_name, "alice")
+
+      new_secrets = Dust.Utilities.File.secrets_file("alice")
+      refute File.exists?(old_secrets)
+      assert File.read!(new_secrets) == "the-genesis-cookie"
+    end
+
+    test "put/2 does not clobber a cookie already present under the new name", %{
+      tmp_dir: _tmp_dir
+    } do
+      Config.load!()
+
+      old_secrets = Dust.Utilities.File.secrets_file("dust")
+      File.mkdir_p!(Path.dirname(old_secrets))
+      File.write!(old_secrets, "stale-cookie")
+
+      new_secrets = Dust.Utilities.File.secrets_file("alice")
+      File.mkdir_p!(Path.dirname(new_secrets))
+      File.write!(new_secrets, "already-adopted-cookie")
+
+      assert :ok = Config.put(:node_name, "alice")
+
+      assert File.read!(new_secrets) == "already-adopted-cookie"
+    end
+
+    test "put/2 is a no-op for the migration when there is no existing cookie", %{
+      tmp_dir: _tmp_dir
+    } do
+      Config.load!()
+
+      assert :ok = Config.put(:node_name, "alice")
+
+      refute File.exists?(Dust.Utilities.File.secrets_file("dust"))
+      refute File.exists?(Dust.Utilities.File.secrets_file("alice"))
+    end
+
     test "rejects names with illegal characters" do
       Config.load!()
 
