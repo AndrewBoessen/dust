@@ -38,6 +38,61 @@ defmodule Dust.Ui.Format do
     "#{:erlang.float_to_binary(clamped * 100.0, decimals: decimals)}%"
   end
 
+  @archive_mimes ~w(
+    application/zip application/x-tar application/gzip application/x-gzip
+    application/x-7z-compressed application/vnd.rar application/x-rar-compressed
+    application/x-bzip2 application/x-xz
+  )
+
+  @spreadsheet_mimes ~w(
+    text/csv application/vnd.ms-excel
+    application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+    application/vnd.oasis.opendocument.spreadsheet
+  )
+
+  @presentation_mimes ~w(
+    application/vnd.ms-powerpoint
+    application/vnd.openxmlformats-officedocument.presentationml.presentation
+    application/vnd.oasis.opendocument.presentation
+  )
+
+  @document_mimes ~w(
+    application/pdf application/msword application/rtf
+    application/vnd.openxmlformats-officedocument.wordprocessingml.document
+    application/vnd.oasis.opendocument.text
+  )
+
+  @code_mimes ~w(
+    application/json application/xml text/xml application/javascript
+    application/x-yaml text/yaml
+  )
+
+  @doc """
+  Maps a MIME type to a Heroicon name (see `Dust.Ui.CoreComponents.icon/1`).
+
+  Falls back to `"hero-document"` for `nil`, `application/octet-stream`, and
+  anything unrecognised.
+  """
+  @spec file_icon(String.t() | nil) :: String.t()
+  def file_icon(nil), do: "hero-document"
+
+  def file_icon(mime) when is_binary(mime) do
+    cond do
+      String.starts_with?(mime, "image/") -> "hero-photo"
+      String.starts_with?(mime, "video/") -> "hero-film"
+      String.starts_with?(mime, "audio/") -> "hero-musical-note"
+      mime in @archive_mimes -> "hero-archive-box"
+      mime in @spreadsheet_mimes -> "hero-table-cells"
+      mime in @presentation_mimes -> "hero-presentation-chart-bar"
+      mime in @document_mimes -> "hero-document-text"
+      mime in @code_mimes -> "hero-code-bracket"
+      String.starts_with?(mime, "text/") -> "hero-document-text"
+      true -> "hero-document"
+    end
+  end
+
+  def file_icon(_), do: "hero-document"
+
   @doc """
   Returns a relative timestamp like "12s ago", "3m ago", "2h ago".
   Accepts a DateTime, NaiveDateTime, integer (unix seconds), or nil.
