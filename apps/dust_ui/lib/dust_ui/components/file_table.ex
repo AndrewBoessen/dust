@@ -71,7 +71,7 @@ defmodule Dust.Ui.FileTable do
           <tr :for={dir <- @dirs} class="hover:bg-zinc-50">
             <td class="px-4 py-2 text-sm">
               <.link patch={~p"/files/#{dir.id}"} class="flex items-center gap-2 font-medium text-zinc-900 hover:underline">
-                <span class="text-zinc-400">📁</span>
+                <.icon name="hero-folder" class="size-4 shrink-0 text-zinc-400" />
                 {dir.name}
               </.link>
             </td>
@@ -116,7 +116,7 @@ defmodule Dust.Ui.FileTable do
           <tr :for={file <- @files} class="hover:bg-zinc-50">
             <td class="px-4 py-2 text-sm">
               <div class="flex items-center gap-2 font-medium text-zinc-900">
-                <span class="text-zinc-400">📄</span>
+                <.icon name={Format.file_icon(Map.get(file, :mime))} class="size-4 shrink-0 text-zinc-400" />
                 {file.name}
               </div>
               <div :if={p = @progress[file.id]} class="mt-1">
