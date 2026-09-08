@@ -1,10 +1,12 @@
 defmodule Dust.Api.MixProject do
   use Mix.Project
 
+  @version File.read!(Path.join(__DIR__, "../../VERSION")) |> String.trim()
+
   def project do
     [
       app: :dust_api,
-      version: "0.2.5",
+      version: @version,
       build_path: "../../_build",
       config_path: "../../config/config.exs",
       deps_path: "../../deps",

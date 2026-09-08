@@ -4,13 +4,13 @@
 
 ## Installation
 
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `core` to your list of dependencies in `mix.exs`:
+`dust_core` is part of the Dust umbrella. Depend on it from another
+umbrella app by adding it to that app's `mix.exs` deps:
 
 ```elixir
 def deps do
   [
-    {:core, "~> 0.2.5"}
+    {:dust_core, in_umbrella: true}
   ]
 end
 ```

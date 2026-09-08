@@ -6,6 +6,9 @@ defmodule Dust.Api.Handlers.StatusHandler do
 
   import Plug.Conn
 
+  # Taken from the umbrella `VERSION` file at compile time.
+  @version Mix.Project.config()[:version]
+
   @doc "Returns aggregated node status as JSON."
   @spec handle(Plug.Conn.t()) :: Plug.Conn.t()
   def handle(conn) do
@@ -23,7 +26,7 @@ defmodule Dust.Api.Handlers.StatusHandler do
       ui_port: Dust.Utilities.Config.ui_port(),
       ui_bind: Dust.Utilities.Config.ui_bind(),
       uptime_ms: :erlang.statistics(:wall_clock) |> elem(0),
-      version: "0.2.5"
+      version: @version
     }
 
     json_response(conn, 200, status)

@@ -1,11 +1,13 @@
 defmodule Dust.MixProject do
   use Mix.Project
 
+  @version File.read!(Path.join(__DIR__, "VERSION")) |> String.trim()
+
   def project do
     [
       apps_path: "apps",
       name: "Dust",
-      version: "0.2.5",
+      version: @version,
       start_permanent: Mix.env() == :prod,
       listeners: [Phoenix.CodeReloader],
       deps: deps(),

@@ -4,13 +4,13 @@
 
 ## Installation
 
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `dust_daemon` to your list of dependencies in `mix.exs`:
+`dust_daemon` is part of the Dust umbrella. Depend on it from another
+umbrella app by adding it to that app's `mix.exs` deps:
 
 ```elixir
 def deps do
   [
-    {:dust_daemon, "~> 0.2.5"}
+    {:dust_daemon, in_umbrella: true}
   ]
 end
 ```
