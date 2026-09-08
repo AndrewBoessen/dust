@@ -1,0 +1,46 @@
+name: Auto-tag
+
+# Cuts a `vX.Y.Z` tag whenever the `VERSION` file changes on `main`.
+# The tag then triggers `release.yml` (which fires on `push: tags: ["v*"]`),
+# so a release is a one-line edit to `VERSION` — no manual `git tag`.
+
+on:
+  push:
+    branches: [main]
+    paths: ["VERSION"]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    name: Tag from VERSION
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create tag from VERSION
+        run: |
+          set -euo pipefail
+          v="v$(tr -d '[:space:]' < VERSION)"
+
+          if [ "$v" = "v" ]; then
+            echo "VERSION file is empty"; exit 1
+          fi
+
+          if ! printf '%s' "${v#v}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "VERSION '${v#v}' is not X.Y.Z"; exit 1
+          fi
+
+          if git rev-parse -q --verify "refs/tags/$v" >/dev/null; then
+            echo "Tag $v already exists - nothing to do."
+            exit 0
+          fi
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$v" -m "Release $v"
+          git push origin "$v"
+          echo "Pushed $v"
