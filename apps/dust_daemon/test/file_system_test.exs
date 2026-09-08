@@ -89,6 +89,21 @@ defmodule Dust.Daemon.FileSystemTest do
       assert map_size(locations) > 0
     end
 
+    test "stored checksum is a plain SHA-256 of the raw file bytes", %{
+      tmp_dir: tmp_dir,
+      root_dir_id: dest_dir_id
+    } do
+      # Include bytes >= 0x80 — these are what a Latin-1→UTF-8 transcode would corrupt.
+      content = <<0xE9, 0xFF, 0x80>> <> :crypto.strong_rand_bytes(2048)
+      path = Path.join(tmp_dir, "checksum_test.bin")
+      File.write!(path, content)
+
+      assert {:ok, file_uuid} = FileSystem.upload(path, dest_dir_id, "checksum_test.bin")
+
+      expected = :crypto.hash(:sha256, content) |> Base.encode16(case: :lower)
+      assert Dust.Mesh.FileSystem.stat(file_uuid).checksum == expected
+    end
+
     test "fails early and correctly bubbles up local file errors", %{tmp_dir: tmp_dir} do
       missing_path = Path.join(tmp_dir, "does_not_exist.bin")
 

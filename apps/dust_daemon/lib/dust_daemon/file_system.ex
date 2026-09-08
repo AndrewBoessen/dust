@@ -141,7 +141,7 @@ defmodule Dust.Daemon.FileSystem do
     case File.open(path, [:read, :binary]) do
       {:ok, file} ->
         hash =
-          IO.stream(file, 2048)
+          IO.binstream(file, 2048)
           |> Enum.reduce(:crypto.hash_init(:sha256), fn chunk, acc ->
             :crypto.hash_update(acc, chunk)
           end)
