@@ -298,7 +298,7 @@ defmodule Dust.Ui.FilesLive do
                 phx-value-dest={c.id}
                 class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-zinc-50"
               >
-                <.icon name="hero-folder" class="size-4 shrink-0 text-zinc-400" />
+                <.icon name="hero-folder" class="size-4 shrink-0 text-zinc-600" />
                 <span class="text-zinc-700">{c.path}</span>
               </button>
             </li>

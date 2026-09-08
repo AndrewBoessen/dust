@@ -10,6 +10,7 @@ defmodule Dust.Ui.FileTable do
   import Dust.Ui.CoreComponents
 
   alias Dust.Ui.Format
+  alias Phoenix.LiveView.JS
 
   @doc """
   Breadcrumb trail. `trail` is a list of `%{id, name}` from root to
@@ -43,7 +44,8 @@ defmodule Dust.Ui.FileTable do
 
   def file_table(assigns) do
     ~H"""
-    <div class="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
+    <%!-- overflow-x-clip (not overflow-hidden) so the row action menus can overflow downward --%>
+    <div class="overflow-x-clip rounded-lg border border-zinc-200 bg-white shadow-sm">
       <table class="min-w-full divide-y divide-zinc-200">
         <thead class="bg-zinc-50">
           <tr>
@@ -71,45 +73,43 @@ defmodule Dust.Ui.FileTable do
           <tr :for={dir <- @dirs} class="hover:bg-zinc-50">
             <td class="px-4 py-2 text-sm">
               <.link patch={~p"/files/#{dir.id}"} class="flex items-center gap-2 font-medium text-zinc-900 hover:underline">
-                <.icon name="hero-folder" class="size-4 shrink-0 text-zinc-400" />
+                <.icon name="hero-folder" class="size-4 shrink-0 text-zinc-600" />
                 {dir.name}
               </.link>
             </td>
             <td class="px-4 py-2 text-right text-sm text-zinc-500">—</td>
             <td class="px-4 py-2 text-sm text-zinc-500">{Format.relative_time(Map.get(dir, :created_at))}</td>
             <td class="px-4 py-2 text-right text-sm">
-              <div class="inline-flex gap-3">
-                <button
-                  type="button"
-                  phx-click="open_rename"
+              <.row_menu id={"row-menu-dir-#{dir.id}"}>
+                <.menu_item
+                  menu_id={"row-menu-dir-#{dir.id}"}
+                  event="open_rename"
                   phx-value-id={dir.id}
                   phx-value-type="dir"
                   phx-value-name={dir.name}
-                  class="text-zinc-500 hover:text-zinc-900"
                 >
                   Rename
-                </button>
-                <button
-                  type="button"
-                  phx-click="open_move"
+                </.menu_item>
+                <.menu_item
+                  menu_id={"row-menu-dir-#{dir.id}"}
+                  event="open_move"
                   phx-value-id={dir.id}
                   phx-value-type="dir"
                   phx-value-name={dir.name}
-                  class="text-zinc-500 hover:text-zinc-900"
                 >
                   Move
-                </button>
-                <button
-                  type="button"
-                  phx-click="rm"
+                </.menu_item>
+                <.menu_item
+                  menu_id={"row-menu-dir-#{dir.id}"}
+                  event="rm"
+                  danger
                   phx-value-id={dir.id}
                   phx-value-type="dir"
                   data-confirm={"Delete directory '#{dir.name}'?"}
-                  class="text-rose-600 hover:text-rose-800"
                 >
                   Delete
-                </button>
-              </div>
+                </.menu_item>
+              </.row_menu>
             </td>
           </tr>
 
@@ -141,49 +141,118 @@ defmodule Dust.Ui.FileTable do
             </td>
             <td class="px-4 py-2 text-sm text-zinc-500">{Format.relative_time(Map.get(file, :created_at))}</td>
             <td class="px-4 py-2 text-right text-sm">
-              <div class="inline-flex gap-3">
-                <.link
-                  href={~p"/download/#{file.id}"}
-                  class="text-zinc-700 hover:text-zinc-900"
-                >
+              <div class="inline-flex items-center gap-3">
+                <.link href={~p"/download/#{file.id}"} class="text-zinc-700 hover:text-zinc-900">
                   Download
                 </.link>
-                <button
-                  type="button"
-                  phx-click="open_rename"
-                  phx-value-id={file.id}
-                  phx-value-type="file"
-                  phx-value-name={file.name}
-                  class="text-zinc-500 hover:text-zinc-900"
-                >
-                  Rename
-                </button>
-                <button
-                  type="button"
-                  phx-click="open_move"
-                  phx-value-id={file.id}
-                  phx-value-type="file"
-                  phx-value-name={file.name}
-                  class="text-zinc-500 hover:text-zinc-900"
-                >
-                  Move
-                </button>
-                <button
-                  type="button"
-                  phx-click="rm"
-                  phx-value-id={file.id}
-                  phx-value-type="file"
-                  data-confirm={"Delete file '#{file.name}'?"}
-                  class="text-rose-600 hover:text-rose-800"
-                >
-                  Delete
-                </button>
+                <.row_menu id={"row-menu-file-#{file.id}"}>
+                  <.menu_item
+                    menu_id={"row-menu-file-#{file.id}"}
+                    event="open_rename"
+                    phx-value-id={file.id}
+                    phx-value-type="file"
+                    phx-value-name={file.name}
+                  >
+                    Rename
+                  </.menu_item>
+                  <.menu_item
+                    menu_id={"row-menu-file-#{file.id}"}
+                    event="open_move"
+                    phx-value-id={file.id}
+                    phx-value-type="file"
+                    phx-value-name={file.name}
+                  >
+                    Move
+                  </.menu_item>
+                  <.menu_item
+                    menu_id={"row-menu-file-#{file.id}"}
+                    event="rm"
+                    danger
+                    phx-value-id={file.id}
+                    phx-value-type="file"
+                    data-confirm={"Delete file '#{file.name}'?"}
+                  >
+                    Delete
+                  </.menu_item>
+                </.row_menu>
               </div>
             </td>
           </tr>
         </tbody>
       </table>
     </div>
+    """
+  end
+
+  @doc """
+  Three-dots action menu for a table row. Pass `<.menu_item>` children.
+  `id` must be unique per row and is also passed to each child as `menu_id`.
+  """
+  attr :id, :string, required: true
+  slot :inner_block, required: true
+
+  def row_menu(assigns) do
+    ~H"""
+    <div class="relative inline-block text-left" phx-click-away={JS.hide(to: "##{@id}")}>
+      <button
+        type="button"
+        class="flex items-center rounded p-1 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
+        phx-click={JS.toggle(to: "##{@id}")}
+        aria-haspopup="true"
+        aria-label="Open actions menu"
+      >
+        <.icon name="hero-ellipsis-vertical" class="size-5" />
+      </button>
+      <div
+        id={@id}
+        role="menu"
+        class="absolute right-0 z-20 mt-1 hidden w-40 origin-top-right rounded-md border border-zinc-200 bg-white py-1 text-left shadow-lg"
+      >
+        {render_slot(@inner_block)}
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
+  An item inside a `<.row_menu>`. Renders a download-style link when `href` is
+  given, otherwise a button that pushes `event` (with any `phx-value-*` /
+  `data-confirm` passed through). Selecting an item closes the menu.
+  """
+  attr :menu_id, :string, required: true
+  attr :event, :string, default: nil
+  attr :href, :string, default: nil
+  attr :danger, :boolean, default: false
+  attr :rest, :global
+  slot :inner_block, required: true
+
+  def menu_item(%{href: href} = assigns) when is_binary(href) do
+    ~H"""
+    <.link
+      href={@href}
+      role="menuitem"
+      phx-click={JS.hide(to: "##{@menu_id}")}
+      class="block px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50"
+    >
+      {render_slot(@inner_block)}
+    </.link>
+    """
+  end
+
+  def menu_item(assigns) do
+    ~H"""
+    <button
+      type="button"
+      role="menuitem"
+      phx-click={JS.hide(to: "##{@menu_id}") |> JS.push(@event)}
+      class={[
+        "block w-full px-3 py-1.5 text-left text-sm hover:bg-zinc-50",
+        (@danger && "text-rose-600 hover:text-rose-800") || "text-zinc-700"
+      ]}
+      {@rest}
+    >
+      {render_slot(@inner_block)}
+    </button>
     """
   end
 
