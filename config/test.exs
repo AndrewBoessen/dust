@@ -11,6 +11,9 @@ config :argon2_elixir,
 # Disable tsnet sidecar in tests
 config :dust_bridge, :start_sidecar, false
 
+# Fast CRDT convergence in tests
+config :dust_mesh, crdt_sync_interval_ms: 200
+
 # Dust persist file root directory; bind the HTTP API to a random free port
 # in tests so it never collides with a running dust daemon on the dev box.
 config :dust_utilities, :config, %{

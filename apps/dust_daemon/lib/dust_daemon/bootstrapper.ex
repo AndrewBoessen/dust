@@ -220,8 +220,8 @@ defmodule Dust.Daemon.Bootstrapper do
     # If peers are connected, wait a few sync intervals for delta exchange
     if Node.list() != [] do
       Logger.debug("Bootstrapper [3/5]: peers present — waiting for delta exchange…")
-      # DeltaCrdt sync_interval is 200ms; wait 3× for comfortable margin
-      Process.sleep(600)
+      # Wait 3× the DeltaCrdt sync interval for comfortable margin
+      Process.sleep(3 * Application.get_env(:dust_mesh, :crdt_sync_interval_ms, 2_000))
     end
 
     entry_counts = crdt_entry_counts()

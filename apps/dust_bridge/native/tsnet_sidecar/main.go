@@ -63,7 +63,17 @@ func main() {
 	// Capture auth URL from any tsnet or standard log output.
 	// tsnet may emit the auth URL via its Logf callback or via Go's
 	// standard log package — we capture both paths.
+	//
+	// tsnet hands Logf every line, including the "[v1]"/"[v2]" debug lines
+	// that tailscaled normally keeps out of stderr (per-packet filter
+	// verdicts, netcheck reports, wg handshakes). Drop those unless asked
+	// for, so idle traffic doesn't turn into journald churn. The login URL
+	// line is not verbose, so auth capture is unaffected.
+	verbose := os.Getenv("TS_SIDECAR_VERBOSE") == "1"
 	srv.Logf = func(format string, args ...any) {
+		if !verbose && isVerboseLog(format) {
+			return
+		}
 		msg := fmt.Sprintf(format, args...)
 		log.Print(msg)
 		captureAuthURL(msg)
@@ -256,6 +266,13 @@ func handleCommand(srv *tsnet.Server, cmd []byte) []byte {
 	default:
 		return append([]byte("ACK: "), cmd...)
 	}
+}
+
+// isVerboseLog reports whether a tsnet log line carries a "[vN] " verbosity
+// marker. Mirrors logtail's parseAndRemoveLogLevel: the marker may appear
+// after a component prefix (e.g. "netcheck: [v1] ...", "wg: [v2] ...").
+func isVerboseLog(format string) bool {
+	return strings.Contains(format, "[v1] ") || strings.Contains(format, "[v2] ")
 }
 
 // captureAuthURL extracts a Tailscale login URL from any log message.
