@@ -338,7 +338,13 @@ defmodule Dust.Bridge do
         env: [
           {~c"TS_HOSTNAME", to_charlist(hostname)},
           {~c"TS_STATE_DIR", to_charlist(state_dir)},
-          {~c"TS_TAGS", to_charlist(ts_tags)}
+          {~c"TS_TAGS", to_charlist(ts_tags)},
+          # Opt out of tsnet's default log upload to log.tailscale.io.
+          {~c"TS_NO_LOGS_NO_SUPPORT", ~c"1"},
+          # The sidecar is a packet proxy with a small heap; more Ps only
+          # spread GC/scheduler overhead across idle cores.
+          {~c"GOMAXPROCS", ~c"2"},
+          {~c"GOGC", ~c"200"}
         ]
       ])
 

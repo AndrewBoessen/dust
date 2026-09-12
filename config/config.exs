@@ -23,6 +23,12 @@ config :dust_ui, Dust.Ui.Endpoint,
 
 config :phoenix, :json_library, Jason
 
+# ── Mesh ───────────────────────────────────────────────────────────────
+# DeltaCrdt anti-entropy interval. Each of the SharedMap CRDTs sends a diff
+# to every peer on every tick, so this bounds idle traffic through the
+# tsnet sidecar. Lower it for faster convergence at the cost of CPU.
+config :dust_mesh, crdt_sync_interval_ms: 2_000
+
 config :esbuild,
   version: "0.21.5",
   dust_ui: [

@@ -19,6 +19,14 @@ defmodule Dust.Mesh.SharedMap do
         def all(),         do: crdt_to_map()
       end
 
+  ## Configuration
+
+  Every CRDT runs DeltaCrdt's anti-entropy sync against all neighbours on a
+  fixed timer. Each tick sends a diff (and gets an ack) per neighbour per
+  CRDT, even when nothing changed, so the interval directly sets the idle
+  chatter over the tailnet. `:dust_mesh, :crdt_sync_interval_ms` controls
+  it (default 2000; tests use 200 for fast convergence).
+
   ## Injected helpers (private to the using module)
 
     * `crdt_put/2`     — insert or update a key/value pair.
@@ -64,7 +72,7 @@ defmodule Dust.Mesh.SharedMap do
            [
              crdt: DeltaCrdt.AWLWWMap,
              name: @crdt_name,
-             sync_interval: 200,
+             sync_interval: Application.get_env(:dust_mesh, :crdt_sync_interval_ms, 2_000),
              storage_module: Dust.Mesh.SharedMap.Storage
            ]},
           %{
