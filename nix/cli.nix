@@ -44,6 +44,8 @@ beamPackages.mixRelease {
   # default; we want the CLI release only.
   mixReleaseName = "dustctl";
 
+  dontMixDepsCompile = true;
+
   # Build dust_cli from inside its app directory so mix treats it as a
   # standalone project — otherwise `mix release` from the umbrella root
   # tries to compile every umbrella app (dust_api, dust_bridge, ...) and
