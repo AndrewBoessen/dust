@@ -102,6 +102,8 @@ beamPackages.mixRelease {
   releaseType = "release";
   mixEnv = "prod";
 
+  dontUseCmakeConfigure = true;
+
   nativeBuildInputs = [
     cmake
     gnumake
@@ -134,10 +136,12 @@ beamPackages.mixRelease {
   };
 
   # Wire vendored cargo deps into each NIF's source tree before mix
-  # invokes rustler. This MUST happen in preConfigure — mixRelease's
-  # configurePhase runs `mix deps.compile --skip-umbrella-children`,
-  # which is when rs_simd's rustler shells out to cargo. preBuild runs
-  # AFTER that, so it's too late.
+  # invokes rustler. This MUST happen in preConfigure — mixRelease runs
+  # `mix deps.compile --skip-umbrella-children` via the `mixDepsCompileHook`
+  # setup hook, registered in `postConfigureHooks` (nixpkgs
+  # pkgs/development/beam-modules/hooks/mix-deps-compile-hook.sh). That is
+  # when rs_simd's rustler shells out to cargo, and `runHook preConfigure`
+  # fires before it. preBuild runs AFTER that, so it's too late.
   #
   # `importCargoLock` ships its own .cargo/config.toml with a relative
   # `directory = "cargo-vendor-dir"`, which doesn't resolve in our
