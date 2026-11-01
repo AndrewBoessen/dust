@@ -50,7 +50,7 @@ let
   mixFodDeps = (beamPackages.fetchMixDeps {
     pname = "${pname}-mix-deps";
     inherit src version;
-    hash = "sha256-rdcYD0SpOm6ZOwD1h1V/3NtpZt9ba4/MFlYK5Y3A/I8=";
+    hash = "sha256-PxGAbjtKs/G3DiemZDbMgSaMJhGQ+XAl87o04U4vEWk=";
 
     # Make `mix deps.get` work in the sandbox.
     env = {
